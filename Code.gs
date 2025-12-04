@@ -1,0 +1,572 @@
+/**
+ * 예약 관리 시스템 - 메인 파일
+ * Google Apps Script WebApp
+ *
+ * @author Claude Code
+ * @version 1.0
+ * @date 2025-12-04
+ */
+
+// ==========================================
+// 1. WebApp 진입점
+// ==========================================
+
+/**
+ * WebApp 진입점 - HTML 페이지 렌더링
+ * @param {Object} e - 요청 파라미터 객체
+ * @return {HtmlOutput} HTML 페이지
+ */
+function doGet(e) {
+  try {
+    return HtmlService.createHtmlOutputFromFile('index')
+      .setTitle('예약 관리 시스템')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+  } catch (error) {
+    logError('doGet', error);
+    return HtmlService.createHtmlOutput('<h1>시스템 오류가 발생했습니다.</h1><p>관리자에게 문의해주세요.</p>');
+  }
+}
+
+/**
+ * POST 요청 처리
+ * @param {Object} e - 요청 파라미터 객체
+ * @return {ContentService} JSON 응답
+ */
+function doPost(e) {
+  try {
+    const action = e.parameter.action;
+    let result;
+
+    switch (action) {
+      case 'submit':
+        result = submitReservation(e.parameter);
+        break;
+      case 'checkAvailability':
+        result = checkAvailability(
+          e.parameter.date,
+          e.parameter.startTime,
+          e.parameter.endTime,
+          e.parameter.roomType
+        );
+        break;
+      default:
+        result = { success: false, error: '알 수 없는 요청입니다.' };
+    }
+
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    logError('doPost', error);
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      error: '요청 처리 중 오류가 발생했습니다.'
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// ==========================================
+// 2. 클라이언트 호출 가능 함수들
+// ==========================================
+
+/**
+ * 설정 정보 조회 (클라이언트에서 호출)
+ * @return {Object} 설정 객체
+ */
+function getSettings() {
+  try {
+    const sheet = getSheet('설정');
+    const data = sheet.getDataRange().getValues();
+
+    const settings = {};
+    for (let i = 1; i < data.length; i++) {
+      const key = data[i][0];
+      const value = data[i][1];
+
+      // 키를 camelCase로 변환
+      const camelKey = key.replace(/\s+/g, '');
+      settings[camelKey] = value;
+    }
+
+    return settings;
+  } catch (error) {
+    logError('getSettings', error);
+    // 기본값 반환
+    return {
+      기준인원: 3,
+      시간당기본요금: 44000,
+      최소이용시간: 2,
+      추가인원단가: 5000,
+      AB동시대관기준: 10,
+      VAT요율: 10,
+      운영시작시간: '09:00',
+      운영종료시간: '22:00',
+      예약시간단위: 30
+    };
+  }
+}
+
+/**
+ * Room 정보 조회 (클라이언트에서 호출)
+ * @return {Array} Room 객체 배열
+ */
+function getRoomInfo() {
+  try {
+    const sheet = getSheet('Room정보');
+    const data = sheet.getDataRange().getValues();
+    const rooms = [];
+
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][4] === 'Y') {  // 활성화된 룸만
+        rooms.push({
+          type: data[i][0],
+          capacity: data[i][1],
+          rate: data[i][2],
+          description: data[i][3],
+          active: true
+        });
+      }
+    }
+
+    return rooms;
+  } catch (error) {
+    logError('getRoomInfo', error);
+    return [];
+  }
+}
+
+/**
+ * 실시간 가격 계산 (클라이언트에서 호출)
+ * @param {number} persons - 전체 인원
+ * @param {number} hours - 이용 시간
+ * @param {string} roomType - Room 타입
+ * @return {Object} 가격 상세 객체
+ */
+function calculatePrice(persons, hours, roomType) {
+  try {
+    const settings = getSettings();
+    const basePersons = settings['기준인원'] || 3;
+    const baseRate = settings['시간당기본요금'] || 44000;
+    const extraPersonRate = settings['추가인원단가'] || 5000;
+    const vatRate = settings['VAT요율'] || 10;
+
+    // A+B 룸인 경우 요금 2배
+    const roomMultiplier = roomType === 'A+B' ? 2 : 1;
+
+    // 기본요금 계산
+    const basePrice = baseRate * roomMultiplier * hours;
+
+    // 추가 인원 계산
+    const extraPersons = Math.max(0, persons - basePersons);
+    const extraPersonFee = extraPersons * extraPersonRate * hours;
+
+    // 소계
+    const subtotal = basePrice + extraPersonFee;
+
+    // VAT
+    const vat = Math.round(subtotal * vatRate / 100);
+
+    // 총액
+    const total = subtotal + vat;
+
+    return {
+      basePrice: basePrice,
+      extraPersonFee: extraPersonFee,
+      subtotal: subtotal,
+      vat: vat,
+      total: total
+    };
+  } catch (error) {
+    logError('calculatePrice', error);
+    return {
+      basePrice: 0,
+      extraPersonFee: 0,
+      subtotal: 0,
+      vat: 0,
+      total: 0,
+      error: '가격 계산 중 오류가 발생했습니다.'
+    };
+  }
+}
+
+/**
+ * 인원에 따른 Room 타입 자동 추천 (클라이언트에서 호출)
+ * @param {number} persons - 전체 인원
+ * @return {string} 추천 Room 타입
+ */
+function suggestRoomType(persons) {
+  try {
+    const settings = getSettings();
+    const abThreshold = settings['AB동시대관기준'] || 10;
+
+    if (persons >= abThreshold) {
+      return 'A+B';
+    }
+
+    return 'A';  // 기본값
+  } catch (error) {
+    logError('suggestRoomType', error);
+    return 'A';
+  }
+}
+
+/**
+ * 예약 가능 여부 확인 (클라이언트에서 호출)
+ * @param {string} date - 예약 날짜 (YYYY-MM-DD)
+ * @param {string} startTime - 시작 시간 (HH:MM)
+ * @param {string} endTime - 종료 시간 (HH:MM)
+ * @param {string} roomType - Room 타입
+ * @return {Object} { available: true/false, conflictReservations: [] }
+ */
+function checkAvailability(date, startTime, endTime, roomType) {
+  try {
+    const sheet = getSheet('예약내역');
+    const data = sheet.getDataRange().getValues();
+
+    const requestStart = new Date(date + ' ' + startTime);
+    const requestEnd = new Date(date + ' ' + endTime);
+
+    // 확인할 Room 목록
+    let roomsToCheck = [roomType];
+    if (roomType === 'A+B') {
+      roomsToCheck = ['A', 'B', 'A+B'];
+    }
+
+    const conflicts = [];
+
+    // 예약 내역 검사 (헤더 제외)
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const reservationDate = formatDate(row[2]);  // C열: 예약날짜
+      const reservationStart = new Date(reservationDate + ' ' + row[3]);  // D열: 시작시간
+      const reservationEnd = new Date(reservationDate + ' ' + row[4]);  // E열: 종료시간
+      const reservationRoom = row[6];  // G열: Room타입
+      const paymentConfirmed = row[21];  // V열: 입금확인
+
+      // 입금 확인된 예약만 체크
+      if (paymentConfirmed !== 'Y') continue;
+
+      // 같은 날짜인지 확인
+      if (reservationDate !== date) continue;
+
+      // Room 겹침 확인
+      let roomConflict = false;
+      if (reservationRoom === 'A+B') {
+        // 기존 예약이 A+B면 모든 룸과 충돌
+        roomConflict = true;
+      } else if (roomType === 'A+B') {
+        // 새 예약이 A+B면 A, B와 충돌
+        roomConflict = (reservationRoom === 'A' || reservationRoom === 'B');
+      } else {
+        // 같은 룸인지 확인
+        roomConflict = (reservationRoom === roomType);
+      }
+
+      if (!roomConflict) continue;
+
+      // 시간 겹침 확인
+      if (requestStart < reservationEnd && requestEnd > reservationStart) {
+        conflicts.push({
+          reservationNumber: row[0],  // A열: 예약번호
+          date: reservationDate,
+          startTime: row[3],
+          endTime: row[4],
+          roomType: reservationRoom
+        });
+      }
+    }
+
+    return {
+      available: conflicts.length === 0,
+      conflictReservations: conflicts
+    };
+  } catch (error) {
+    logError('checkAvailability', error);
+    return {
+      available: false,
+      error: '예약 확인 중 오류가 발생했습니다.'
+    };
+  }
+}
+
+/**
+ * 예약 등록 메인 함수
+ * @param {Object} formData - 폼 데이터 객체
+ * @return {Object} { success: true/false, reservationNumber: '...', message: '...' }
+ */
+function submitReservation(formData) {
+  const lock = LockService.getScriptLock();
+
+  try {
+    // Lock 획득 (최대 30초 대기)
+    lock.waitLock(30000);
+
+    // 1. 데이터 유효성 검증
+    const validation = validateFormData(formData);
+    if (!validation.valid) {
+      return {
+        success: false,
+        error: validation.errors.join('\n')
+      };
+    }
+
+    // 2. 예약 가능 여부 재확인
+    const availability = checkAvailability(
+      formData.date,
+      formData.startTime,
+      formData.endTime,
+      formData.roomType
+    );
+
+    if (!availability.available) {
+      return {
+        success: false,
+        error: '선택하신 시간에 이미 예약이 있습니다. 다른 시간을 선택해주세요.'
+      };
+    }
+
+    // 3. 예약번호 생성
+    const reservationNumber = generateReservationNumber();
+
+    // 4. 가격 계산
+    const hours = calculateHours(formData.startTime, formData.endTime);
+    const price = calculatePrice(
+      parseInt(formData.persons),
+      hours,
+      formData.roomType
+    );
+
+    // 5. 사업자등록증 업로드 처리 (있는 경우)
+    let fileUrl = '';
+    if (formData.taxBill === 'Y' && formData.businessFile) {
+      fileUrl = uploadFile(formData.businessFile, reservationNumber);
+    }
+
+    // 6. 스프레드시트에 저장
+    const sheet = getSheet('예약내역');
+    const now = new Date();
+
+    sheet.appendRow([
+      reservationNumber,                    // A: 예약번호
+      now,                                  // B: 신청일시
+      formData.date,                        // C: 예약날짜
+      formData.startTime,                   // D: 시작시간
+      formData.endTime,                     // E: 종료시간
+      hours,                                // F: 이용시간
+      formData.roomType,                    // G: Room타입
+      formData.companyName,                 // H: 업체명
+      formData.instagram || '',             // I: 인스타그램ID
+      formData.name,                        // J: 이름
+      formData.phone,                       // K: 연락처
+      formData.persons,                     // L: 전체인원
+      formData.cars,                        // M: 차량대수
+      formData.taxBill,                     // N: 세금계산서
+      formData.source,                      // O: 유입경로
+      formData.shootingType,                // P: 촬영내용
+      price.basePrice,                      // Q: 기본요금
+      price.extraPersonFee,                 // R: 추가인원요금
+      price.subtotal,                       // S: 소계
+      price.vat,                            // T: VAT
+      price.total,                          // U: 총금액
+      'N',                                  // V: 입금확인
+      '',                                   // W: 입금확인일시
+      fileUrl,                              // X: 사업자등록증
+      '',                                   // Y: Calendar이벤트ID
+      '대기',                               // Z: 알림톡발송상태
+      ''                                    // AA: 비고
+    ]);
+
+    logActivity('예약등록', {
+      reservationNumber: reservationNumber,
+      name: formData.name,
+      date: formData.date,
+      roomType: formData.roomType
+    });
+
+    return {
+      success: true,
+      reservationNumber: reservationNumber,
+      totalAmount: price.total,
+      message: '예약 신청이 완료되었습니다. 입금 확인 후 예약이 확정됩니다.'
+    };
+
+  } catch (error) {
+    logError('submitReservation', error);
+    return {
+      success: false,
+      error: '예약 처리 중 오류가 발생했습니다. 다시 시도해주세요.'
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * 예약번호 생성
+ * @return {string} 예약번호 (예: RES20250101-001)
+ */
+function generateReservationNumber() {
+  const sheet = getSheet('예약내역');
+  const today = new Date();
+  const dateStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyyMMdd');
+  const prefix = 'RES' + dateStr + '-';
+
+  // 오늘 날짜의 예약 번호 찾기
+  const data = sheet.getDataRange().getValues();
+  let maxNum = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    const resNum = data[i][0];
+    if (resNum && resNum.startsWith(prefix)) {
+      const num = parseInt(resNum.split('-')[1]);
+      if (num > maxNum) maxNum = num;
+    }
+  }
+
+  const newNum = (maxNum + 1).toString().padStart(3, '0');
+  return prefix + newNum;
+}
+
+/**
+ * 폼 데이터 유효성 검증
+ * @param {Object} data - 폼 데이터
+ * @return {Object} { valid: true/false, errors: [] }
+ */
+function validateFormData(data) {
+  const errors = [];
+
+  // 필수 필드 체크
+  if (!data.companyName) errors.push('업체명을 입력해주세요.');
+  if (!data.name) errors.push('이름을 입력해주세요.');
+  if (!data.phone) errors.push('연락처를 입력해주세요.');
+  if (!data.date) errors.push('예약 날짜를 선택해주세요.');
+  if (!data.startTime) errors.push('시작 시간을 선택해주세요.');
+  if (!data.endTime) errors.push('종료 시간을 선택해주세요.');
+  if (!data.roomType) errors.push('Room을 선택해주세요.');
+  if (!data.persons) errors.push('인원을 입력해주세요.');
+  if (!data.cars) errors.push('차량 대수를 입력해주세요.');
+  if (!data.taxBill) errors.push('세금계산서 발행 여부를 선택해주세요.');
+  if (!data.source) errors.push('유입 경로를 선택해주세요.');
+  if (!data.shootingType) errors.push('촬영 내용을 선택해주세요.');
+  if (!data.agreeTerms || data.agreeTerms !== 'true') errors.push('약관에 동의해주세요.');
+
+  // 연락처 형식 체크
+  if (data.phone) {
+    const phoneRegex = /^010-\d{4}-\d{4}$/;
+    if (!phoneRegex.test(data.phone)) {
+      errors.push('연락처는 010-0000-0000 형식으로 입력해주세요.');
+    }
+  }
+
+  // 날짜 체크 (과거 날짜 불가)
+  if (data.date) {
+    const reservationDate = new Date(data.date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (reservationDate < today) {
+      errors.push('과거 날짜는 예약할 수 없습니다.');
+    }
+  }
+
+  // 시간 체크
+  if (data.startTime && data.endTime) {
+    const start = timeToMinutes(data.startTime);
+    const end = timeToMinutes(data.endTime);
+
+    if (end <= start) {
+      errors.push('종료 시간은 시작 시간보다 늦어야 합니다.');
+    }
+
+    const hours = (end - start) / 60;
+    const settings = getSettings();
+    const minHours = settings['최소이용시간'] || 2;
+
+    if (hours < minHours) {
+      errors.push('최소 이용 시간은 ' + minHours + '시간입니다.');
+    }
+  }
+
+  // 인원 체크
+  if (data.persons) {
+    const persons = parseInt(data.persons);
+    if (persons <= 0) {
+      errors.push('인원은 1명 이상이어야 합니다.');
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors: errors
+  };
+}
+
+// ==========================================
+// 3. 유틸리티 함수
+// ==========================================
+
+/**
+ * 시트 가져오기
+ * @param {string} sheetName - 시트 이름
+ * @return {Sheet} 시트 객체
+ */
+function getSheet(sheetName) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(sheetName);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+  }
+
+  return sheet;
+}
+
+/**
+ * 날짜 포맷팅
+ * @param {Date} date - 날짜 객체
+ * @return {string} YYYY-MM-DD 형식
+ */
+function formatDate(date) {
+  if (typeof date === 'string') return date;
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+/**
+ * 시간을 분으로 변환
+ * @param {string} time - HH:MM 형식
+ * @return {number} 분 단위
+ */
+function timeToMinutes(time) {
+  const parts = time.split(':');
+  return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+}
+
+/**
+ * 이용 시간 계산 (시간 단위)
+ * @param {string} startTime - HH:MM
+ * @param {string} endTime - HH:MM
+ * @return {number} 시간
+ */
+function calculateHours(startTime, endTime) {
+  const start = timeToMinutes(startTime);
+  const end = timeToMinutes(endTime);
+  return (end - start) / 60;
+}
+
+/**
+ * 활동 로그 기록
+ * @param {string} action - 액션명
+ * @param {Object} data - 로그 데이터
+ */
+function logActivity(action, data) {
+  console.log('[' + action + ']', JSON.stringify(data));
+}
+
+/**
+ * 에러 로그 기록
+ * @param {string} functionName - 함수명
+ * @param {Error} error - 에러 객체
+ */
+function logError(functionName, error) {
+  console.error('[ERROR]', functionName, error.toString(), error.stack);
+}
