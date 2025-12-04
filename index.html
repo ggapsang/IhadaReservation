@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>예약 관리 시스템</title>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 20px;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 40px 30px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+
+    .form-container {
+      padding: 40px 30px;
+    }
+
+    .section {
+      margin-bottom: 35px;
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #667eea;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: #555;
+      margin-bottom: 8px;
+    }
+
+    .form-group label.required::after {
+      content: ' *';
+      color: #e74c3c;
+    }
+
+    .form-group input[type="text"],
+    .form-group input[type="tel"],
+    .form-group input[type="date"],
+    .form-group input[type="number"],
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 12px 15px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+
+    .form-row-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 15px;
+    }
+
+    .radio-group {
+      display: flex;
+      gap: 20px;
+      margin-top: 10px;
+    }
+
+    .radio-group label {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      font-weight: normal;
+    }
+
+    .radio-group input[type="radio"] {
+      margin-right: 8px;
+      cursor: pointer;
+    }
+
+    .file-upload {
+      position: relative;
+    }
+
+    .file-upload input[type="file"] {
+      display: none;
+    }
+
+    .file-upload-btn {
+      display: inline-block;
+      padding: 12px 20px;
+      background: #f0f0f0;
+      border: 2px dashed #ccc;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-align: center;
+      width: 100%;
+    }
+
+    .file-upload-btn:hover {
+      background: #e8e8e8;
+      border-color: #667eea;
+    }
+
+    .file-name {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #666;
+    }
+
+    .price-display {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 25px;
+      border-radius: 12px;
+      margin-top: 20px;
+    }
+
+    .price-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      font-size: 14px;
+    }
+
+    .price-row.total {
+      font-size: 20px;
+      font-weight: 700;
+      padding-top: 15px;
+      border-top: 2px solid rgba(255, 255, 255, 0.3);
+      margin-top: 15px;
+    }
+
+    .room-suggestion {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      padding: 12px 15px;
+      border-radius: 8px;
+      margin-top: 10px;
+      font-size: 13px;
+      color: #856404;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+      margin-top: 3px;
+      cursor: pointer;
+    }
+
+    .checkbox-group label {
+      cursor: pointer;
+      line-height: 1.5;
+    }
+
+    .terms-link {
+      color: #667eea;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 18px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      margin-top: 20px;
+    }
+
+    .submit-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+    }
+
+    .submit-btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .loading.active {
+      display: block;
+    }
+
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #667eea;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .alert {
+      padding: 15px 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .alert.show {
+      display: block;
+    }
+
+    .alert.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+
+    .alert.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+
+    .help-text {
+      font-size: 12px;
+      color: #999;
+      margin-top: 5px;
+    }
+
+    @media (max-width: 768px) {
+      .form-row,
+      .form-row-3 {
+        grid-template-columns: 1fr;
+      }
+
+      .header h1 {
+        font-size: 24px;
+      }
+
+      .form-container {
+        padding: 30px 20px;
+      }
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      overflow: auto;
+    }
+
+    .modal-content {
+      background: white;
+      margin: 50px auto;
+      padding: 30px;
+      width: 90%;
+      max-width: 600px;
+      border-radius: 12px;
+      position: relative;
+    }
+
+    .close-modal {
+      position: absolute;
+      right: 20px;
+      top: 20px;
+      font-size: 28px;
+      font-weight: bold;
+      color: #aaa;
+      cursor: pointer;
+    }
+
+    .close-modal:hover {
+      color: #000;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎬 스튜디오 예약 시스템</h1>
+      <p>원하시는 날짜와 시간을 선택하여 예약해주세요</p>
+    </div>
+
+    <div class="form-container">
+      <div id="alertBox" class="alert"></div>
+
+      <form id="reservationForm">
+        <!-- 1. 업체 정보 -->
+        <div class="section">
+          <div class="section-title">업체 정보</div>
+          <div class="form-group">
+            <label class="required">업체 및 브랜드명</label>
+            <input type="text" id="companyName" name="companyName" required
+                   placeholder="예: ABC Studio">
+          </div>
+          <div class="form-group">
+            <label>인스타그램 ID</label>
+            <input type="text" id="instagram" name="instagram"
+                   placeholder="예: @abc_studio (선택사항)">
+          </div>
+        </div>
+
+        <!-- 2. 예약자 정보 -->
+        <div class="section">
+          <div class="section-title">예약자 정보</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="required">이름</label>
+              <input type="text" id="name" name="name" required
+                     placeholder="홍길동">
+            </div>
+            <div class="form-group">
+              <label class="required">연락처</label>
+              <input type="tel" id="phone" name="phone" required
+                     placeholder="010-0000-0000">
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. 방문 정보 -->
+        <div class="section">
+          <div class="section-title">방문 정보</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="required">전체 인원</label>
+              <input type="number" id="persons" name="persons" required
+                     min="1" value="3">
+              <div class="help-text">촬영에 참여하는 모든 인원</div>
+            </div>
+            <div class="form-group">
+              <label class="required">방문 차량 대수</label>
+              <input type="number" id="cars" name="cars" required
+                     min="0" value="1">
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. 날짜/시간 선택 -->
+        <div class="section">
+          <div class="section-title">날짜 및 시간</div>
+          <div class="form-group">
+            <label class="required">예약 날짜</label>
+            <input type="date" id="date" name="date" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="required">시작 시간</label>
+              <select id="startTime" name="startTime" required>
+                <option value="">선택하세요</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="required">종료 시간</label>
+              <select id="endTime" name="endTime" required>
+                <option value="">선택하세요</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>이용 시간</label>
+            <input type="text" id="duration" readonly
+                   style="background: #f5f5f5; cursor: not-allowed;"
+                   placeholder="시간을 선택하면 자동 계산됩니다">
+          </div>
+        </div>
+
+        <!-- 5. Room 선택 -->
+        <div class="section">
+          <div class="section-title">Room 선택</div>
+          <div class="form-group">
+            <label class="required">Room 타입</label>
+            <select id="roomType" name="roomType" required>
+              <option value="">선택하세요</option>
+            </select>
+            <div id="roomSuggestion" class="room-suggestion" style="display: none;"></div>
+          </div>
+        </div>
+
+        <!-- 6. 옵션 선택 -->
+        <div class="section">
+          <div class="section-title">옵션 선택</div>
+          <div class="form-group">
+            <label class="required">세금계산서 발행</label>
+            <div class="radio-group">
+              <label>
+                <input type="radio" name="taxBill" value="Y" required>
+                발행 필요
+              </label>
+              <label>
+                <input type="radio" name="taxBill" value="N" checked>
+                발행 불필요
+              </label>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="required">유입 경로</label>
+              <select id="source" name="source" required>
+                <option value="">선택하세요</option>
+                <option value="네이버">네이버</option>
+                <option value="인스타그램">인스타그램</option>
+                <option value="지인소개">지인소개</option>
+                <option value="공간플랫폼">공간플랫폼</option>
+                <option value="기타">기타</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="required">촬영 내용</label>
+              <select id="shootingType" name="shootingType" required>
+                <option value="">선택하세요</option>
+                <option value="의류">의류</option>
+                <option value="광고">광고</option>
+                <option value="드라마">드라마</option>
+                <option value="잡지">잡지</option>
+                <option value="스냅">스냅</option>
+                <option value="기타">기타</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- 7. 파일 업로드 -->
+        <div class="section" id="fileUploadSection" style="display: none;">
+          <div class="section-title">사업자등록증 업로드</div>
+          <div class="form-group">
+            <label class="required">사업자등록증</label>
+            <div class="file-upload">
+              <label for="businessFile" class="file-upload-btn">
+                📎 파일 선택 (10MB 이내)
+              </label>
+              <input type="file" id="businessFile" name="businessFile"
+                     accept="image/*,.pdf">
+              <div id="fileName" class="file-name"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 8. 가격 표시 -->
+        <div class="section">
+          <div class="section-title">예상 금액</div>
+          <div class="price-display">
+            <div class="price-row">
+              <span>기본 요금</span>
+              <span id="basePrice">0원</span>
+            </div>
+            <div class="price-row">
+              <span>추가 인원 요금</span>
+              <span id="extraPersonFee">0원</span>
+            </div>
+            <div class="price-row">
+              <span>소계</span>
+              <span id="subtotal">0원</span>
+            </div>
+            <div class="price-row">
+              <span>부가세 (VAT 10%)</span>
+              <span id="vat">0원</span>
+            </div>
+            <div class="price-row total">
+              <span>총 금액</span>
+              <span id="total">0원</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 9. 약관 동의 -->
+        <div class="section">
+          <div class="checkbox-group">
+            <input type="checkbox" id="agreeTerms" name="agreeTerms" required>
+            <label for="agreeTerms">
+              <span class="terms-link" onclick="showTerms()">이용 약관</span>에 동의합니다 (필수)
+            </label>
+          </div>
+        </div>
+
+        <!-- 10. 제출 버튼 -->
+        <button type="submit" class="submit-btn" id="submitBtn">
+          예약 신청하기
+        </button>
+      </form>
+
+      <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <p>예약을 처리하고 있습니다...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 약관 모달 -->
+  <div id="termsModal" class="modal">
+    <div class="modal-content">
+      <span class="close-modal" onclick="closeTerms()">&times;</span>
+      <h2>이용 약관</h2>
+      <div style="margin-top: 20px; line-height: 1.8; font-size: 14px;">
+        <h3>제1조 (목적)</h3>
+        <p>본 약관은 스튜디오 예약 및 이용에 관한 조건 및 절차를 규정함을 목적으로 합니다.</p>
+
+        <h3 style="margin-top: 20px;">제2조 (예약 및 취소)</h3>
+        <p>1. 예약은 입금 확인 후 확정됩니다.<br>
+        2. 예약 취소 시 환불 규정에 따라 처리됩니다.<br>
+        3. 7일 전 취소: 100% 환불<br>
+        4. 3일 전 취소: 50% 환불<br>
+        5. 당일 취소: 환불 불가</p>
+
+        <h3 style="margin-top: 20px;">제3조 (이용 규칙)</h3>
+        <p>1. 시설물을 파손하거나 훼손한 경우 변상 책임이 있습니다.<br>
+        2. 예약 시간을 준수해야 합니다.<br>
+        3. 정리 정돈 후 퇴실해야 합니다.</p>
+
+        <h3 style="margin-top: 20px;">제4조 (개인정보 처리)</h3>
+        <p>수집된 개인정보는 예약 관리 목적으로만 사용되며, 동의 없이 제3자에게 제공되지 않습니다.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // 전역 변수
+    // ==========================================
+    let settings = {};
+    let rooms = [];
+
+    // ==========================================
+    // 초기화
+    // ==========================================
+    window.onload = function() {
+      loadSettings();
+      loadRooms();
+      generateTimeOptions();
+      setupEventListeners();
+      setMinDate();
+    };
+
+    // ==========================================
+    // 서버 함수 호출
+    // ==========================================
+    function loadSettings() {
+      google.script.run
+        .withSuccessHandler(function(data) {
+          settings = data;
+          console.log('설정 로드 완료:', settings);
+        })
+        .withFailureHandler(function(error) {
+          console.error('설정 로드 실패:', error);
+          showAlert('설정을 불러오는데 실패했습니다.', 'error');
+        })
+        .getSettings();
+    }
+
+    function loadRooms() {
+      google.script.run
+        .withSuccessHandler(function(data) {
+          rooms = data;
+          populateRoomOptions();
+          console.log('Room 정보 로드 완료:', rooms);
+        })
+        .withFailureHandler(function(error) {
+          console.error('Room 정보 로드 실패:', error);
+        })
+        .getRoomInfo();
+    }
+
+    function populateRoomOptions() {
+      const select = document.getElementById('roomType');
+      rooms.forEach(function(room) {
+        const option = document.createElement('option');
+        option.value = room.type;
+        option.textContent = 'Room ' + room.type + ' (' + room.description + ')';
+        select.appendChild(option);
+      });
+    }
+
+    // ==========================================
+    // UI 초기화
+    // ==========================================
+    function generateTimeOptions() {
+      const startSelect = document.getElementById('startTime');
+      const endSelect = document.getElementById('endTime');
+
+      for (let hour = 9; hour <= 22; hour++) {
+        for (let min = 0; min < 60; min += 30) {
+          const timeStr = String(hour).padStart(2, '0') + ':' + String(min).padStart(2, '0');
+
+          const startOption = document.createElement('option');
+          startOption.value = timeStr;
+          startOption.textContent = timeStr;
+          startSelect.appendChild(startOption);
+
+          const endOption = document.createElement('option');
+          endOption.value = timeStr;
+          endOption.textContent = timeStr;
+          endSelect.appendChild(endOption);
+        }
+      }
+    }
+
+    function setMinDate() {
+      const dateInput = document.getElementById('date');
+      const today = new Date();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      const year = tomorrow.getFullYear();
+      const month = String(tomorrow.getMonth() + 1).padStart(2, '0');
+      const day = String(tomorrow.getDate()).padStart(2, '0');
+
+      dateInput.min = year + '-' + month + '-' + day;
+    }
+
+    // ==========================================
+    // 이벤트 리스너 설정
+    // ==========================================
+    function setupEventListeners() {
+      // 인원 변경 시
+      document.getElementById('persons').addEventListener('input', function() {
+        suggestRoom();
+        calculatePriceUI();
+      });
+
+      // 시간 변경 시
+      document.getElementById('startTime').addEventListener('change', function() {
+        calculateDuration();
+        calculatePriceUI();
+      });
+
+      document.getElementById('endTime').addEventListener('change', function() {
+        calculateDuration();
+        calculatePriceUI();
+      });
+
+      // Room 선택 변경 시
+      document.getElementById('roomType').addEventListener('change', calculatePriceUI);
+
+      // 세금계산서 선택 시
+      document.querySelectorAll('input[name="taxBill"]').forEach(function(radio) {
+        radio.addEventListener('change', function() {
+          const fileSection = document.getElementById('fileUploadSection');
+          if (this.value === 'Y') {
+            fileSection.style.display = 'block';
+          } else {
+            fileSection.style.display = 'none';
+          }
+        });
+      });
+
+      // 파일 선택 시
+      document.getElementById('businessFile').addEventListener('change', function() {
+        const fileName = document.getElementById('fileName');
+        if (this.files.length > 0) {
+          const file = this.files[0];
+          const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+
+          if (file.size > 10 * 1024 * 1024) {
+            showAlert('파일 크기는 10MB를 초과할 수 없습니다.', 'error');
+            this.value = '';
+            fileName.textContent = '';
+          } else {
+            fileName.textContent = '선택된 파일: ' + file.name + ' (' + sizeMB + 'MB)';
+          }
+        }
+      });
+
+      // 연락처 자동 포맷팅
+      document.getElementById('phone').addEventListener('input', function() {
+        let value = this.value.replace(/[^0-9]/g, '');
+        if (value.length > 3 && value.length <= 7) {
+          value = value.slice(0, 3) + '-' + value.slice(3);
+        } else if (value.length > 7) {
+          value = value.slice(0, 3) + '-' + value.slice(3, 7) + '-' + value.slice(7, 11);
+        }
+        this.value = value;
+      });
+
+      // 폼 제출
+      document.getElementById('reservationForm').addEventListener('submit', handleSubmit);
+    }
+
+    // ==========================================
+    // Room 자동 추천
+    // ==========================================
+    function suggestRoom() {
+      const persons = parseInt(document.getElementById('persons').value);
+      if (isNaN(persons) || persons <= 0) return;
+
+      google.script.run
+        .withSuccessHandler(function(suggestedRoom) {
+          const roomSelect = document.getElementById('roomType');
+          const suggestion = document.getElementById('roomSuggestion');
+
+          if (suggestedRoom === 'A+B') {
+            suggestion.textContent = '👥 인원이 많아 A+B 룸 동시 대관을 권장합니다.';
+            suggestion.style.display = 'block';
+            roomSelect.value = 'A+B';
+          } else {
+            suggestion.style.display = 'none';
+          }
+        })
+        .suggestRoomType(persons);
+    }
+
+    // ==========================================
+    // 이용 시간 계산
+    // ==========================================
+    function calculateDuration() {
+      const startTime = document.getElementById('startTime').value;
+      const endTime = document.getElementById('endTime').value;
+
+      if (!startTime || !endTime) return;
+
+      const start = timeToMinutes(startTime);
+      const end = timeToMinutes(endTime);
+
+      if (end <= start) {
+        document.getElementById('duration').value = '종료 시간은 시작 시간보다 늦어야 합니다';
+        return;
+      }
+
+      const hours = (end - start) / 60;
+      document.getElementById('duration').value = hours + '시간';
+    }
+
+    function timeToMinutes(time) {
+      const parts = time.split(':');
+      return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+    }
+
+    // ==========================================
+    // 가격 계산 (UI)
+    // ==========================================
+    function calculatePriceUI() {
+      const persons = parseInt(document.getElementById('persons').value);
+      const startTime = document.getElementById('startTime').value;
+      const endTime = document.getElementById('endTime').value;
+      const roomType = document.getElementById('roomType').value;
+
+      if (!persons || !startTime || !endTime || !roomType) return;
+
+      const start = timeToMinutes(startTime);
+      const end = timeToMinutes(endTime);
+
+      if (end <= start) return;
+
+      const hours = (end - start) / 60;
+
+      google.script.run
+        .withSuccessHandler(function(price) {
+          document.getElementById('basePrice').textContent = price.basePrice.toLocaleString() + '원';
+          document.getElementById('extraPersonFee').textContent = price.extraPersonFee.toLocaleString() + '원';
+          document.getElementById('subtotal').textContent = price.subtotal.toLocaleString() + '원';
+          document.getElementById('vat').textContent = price.vat.toLocaleString() + '원';
+          document.getElementById('total').textContent = price.total.toLocaleString() + '원';
+        })
+        .withFailureHandler(function(error) {
+          console.error('가격 계산 실패:', error);
+        })
+        .calculatePrice(persons, hours, roomType);
+    }
+
+    // ==========================================
+    // 폼 제출 처리
+    // ==========================================
+    function handleSubmit(e) {
+      e.preventDefault();
+
+      // 유효성 검증
+      if (!validateForm()) return;
+
+      // 예약 가능 여부 확인
+      const date = document.getElementById('date').value;
+      const startTime = document.getElementById('startTime').value;
+      const endTime = document.getElementById('endTime').value;
+      const roomType = document.getElementById('roomType').value;
+
+      showLoading(true);
+
+      google.script.run
+        .withSuccessHandler(function(availability) {
+          if (availability.available) {
+            submitReservation();
+          } else {
+            showLoading(false);
+            showAlert('선택하신 시간에 이미 예약이 있습니다. 다른 시간을 선택해주세요.', 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          showLoading(false);
+          showAlert('예약 확인 중 오류가 발생했습니다.', 'error');
+        })
+        .checkAvailability(date, startTime, endTime, roomType);
+    }
+
+    function submitReservation() {
+      const formData = {
+        companyName: document.getElementById('companyName').value,
+        instagram: document.getElementById('instagram').value,
+        name: document.getElementById('name').value,
+        phone: document.getElementById('phone').value,
+        persons: document.getElementById('persons').value,
+        cars: document.getElementById('cars').value,
+        date: document.getElementById('date').value,
+        startTime: document.getElementById('startTime').value,
+        endTime: document.getElementById('endTime').value,
+        roomType: document.getElementById('roomType').value,
+        taxBill: document.querySelector('input[name="taxBill"]:checked').value,
+        source: document.getElementById('source').value,
+        shootingType: document.getElementById('shootingType').value,
+        agreeTerms: document.getElementById('agreeTerms').checked.toString()
+      };
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showLoading(false);
+          if (result.success) {
+            showAlert('예약이 완료되었습니다!\n예약번호: ' + result.reservationNumber + '\n총 금액: ' + result.totalAmount.toLocaleString() + '원\n\n입금 확인 후 예약이 확정됩니다.', 'success');
+            document.getElementById('reservationForm').reset();
+            setMinDate();
+          } else {
+            showAlert('예약 실패: ' + result.error, 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          showLoading(false);
+          showAlert('예약 처리 중 오류가 발생했습니다: ' + error, 'error');
+        })
+        .submitReservation(formData);
+    }
+
+    function validateForm() {
+      const phone = document.getElementById('phone').value;
+      const phoneRegex = /^010-\d{4}-\d{4}$/;
+
+      if (!phoneRegex.test(phone)) {
+        showAlert('연락처는 010-0000-0000 형식으로 입력해주세요.', 'error');
+        return false;
+      }
+
+      const taxBill = document.querySelector('input[name="taxBill"]:checked').value;
+      const businessFile = document.getElementById('businessFile').files[0];
+
+      if (taxBill === 'Y' && !businessFile) {
+        showAlert('세금계산서 발행을 위해 사업자등록증을 첨부해주세요.', 'error');
+        return false;
+      }
+
+      return true;
+    }
+
+    // ==========================================
+    // UI 헬퍼 함수
+    // ==========================================
+    function showAlert(message, type) {
+      const alertBox = document.getElementById('alertBox');
+      alertBox.textContent = message;
+      alertBox.className = 'alert ' + type + ' show';
+
+      setTimeout(function() {
+        alertBox.className = 'alert ' + type;
+      }, 5000);
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function showLoading(show) {
+      const loading = document.getElementById('loading');
+      const form = document.getElementById('reservationForm');
+      const btn = document.getElementById('submitBtn');
+
+      if (show) {
+        loading.classList.add('active');
+        form.style.display = 'none';
+        btn.disabled = true;
+      } else {
+        loading.classList.remove('active');
+        form.style.display = 'block';
+        btn.disabled = false;
+      }
+    }
+
+    function showTerms() {
+      document.getElementById('termsModal').style.display = 'block';
+    }
+
+    function closeTerms() {
+      document.getElementById('termsModal').style.display = 'none';
+    }
+
+    window.onclick = function(event) {
+      const modal = document.getElementById('termsModal');
+      if (event.target == modal) {
+        modal.style.display = 'none';
+      }
+    };
+  </script>
+</body>
+</html>
