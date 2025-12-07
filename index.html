@@ -871,18 +871,26 @@
       if (fileInput.files.length > 0) {
         const file = fileInput.files[0];
 
+        // 파일 크기 로깅
+        console.log('업로드 파일:', file.name, '크기:', file.size, 'bytes', '(' + (file.size / 1024 / 1024).toFixed(2) + ' MB)');
+
         const reader = new FileReader();
         reader.onload = function(e) {
           // Base64 데이터와 파일 정보 추가
-          formData.businessFileData = e.target.result.split(',')[1]; // Base64 데이터만
+          const base64Data = e.target.result.split(',')[1]; // Base64 데이터만
+          formData.businessFileData = base64Data;
           formData.businessFileName = file.name;
           formData.businessFileType = file.type;
+
+          // Base64 데이터 크기 로깅
+          console.log('Base64 인코딩 크기:', base64Data.length, 'bytes', '(' + (base64Data.length / 1024 / 1024).toFixed(2) + ' MB)');
 
           // 서버로 전송
           sendReservationData(formData);
         };
         reader.onerror = function(error) {
           showLoading(false);
+          console.error('파일 읽기 오류:', error);
           showAlert('파일 읽기 중 오류가 발생했습니다.', 'error');
         };
         reader.readAsDataURL(file);

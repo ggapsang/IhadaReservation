@@ -654,7 +654,12 @@ function uploadFile(fileBlob, reservationNumber) {
     const file = folder.createFile(fileBlob.setName(fileName));
 
     // 파일 공유 설정 (제한된 접근 - 링크 있는 사람만)
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (sharingError) {
+      // 공유 설정 실패는 무시 (파일은 이미 업로드됨)
+      console.log('파일 공유 설정 실패 (무시):', sharingError);
+    }
 
     // 파일 URL 반환
     const fileUrl = file.getUrl();
@@ -670,7 +675,9 @@ function uploadFile(fileBlob, reservationNumber) {
 
   } catch (error) {
     logError('uploadFile', error);
-    throw new Error('파일 업로드 중 오류가 발생했습니다: ' + error.message);
+    // 더 상세한 에러 메시지 반환
+    const errorMsg = '파일 업로드 실패: ' + error.message + ' (파일크기: ' + (fileBlob ? fileBlob.getBytes().length : 'unknown') + ' bytes)';
+    throw new Error(errorMsg);
   }
 }
 
