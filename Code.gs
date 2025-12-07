@@ -570,3 +570,147 @@ function logActivity(action, data) {
 function logError(functionName, error) {
   console.error('[ERROR]', functionName, error.toString(), error.stack);
 }
+
+/**
+ * Google Docs에서 이용약관 내용 가져오기
+ * @return {Object} { content: HTML 내용, lastModified: 마지막 수정일 }
+ */
+function getTermsContent() {
+  try {
+    const docId = '15NN03jeN6CHls3TMjkTIQWfmQIDvnxuoKukARue3f_0';
+    const doc = DocumentApp.openById(docId);
+    const body = doc.getBody();
+    const lastModified = DriveApp.getFileById(docId).getLastUpdated();
+
+    // 문서 내용을 HTML로 변환
+    const htmlContent = convertDocToHtml(body);
+
+    return {
+      content: htmlContent,
+      lastModified: Utilities.formatDate(lastModified, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm')
+    };
+  } catch (error) {
+    logError('getTermsContent', error);
+    return {
+      content: '<p>약관을 불러오는데 실패했습니다. 관리자에게 문의해주세요.</p>',
+      lastModified: ''
+    };
+  }
+}
+
+/**
+ * Google Docs Body를 HTML로 변환
+ * @param {Body} body - Google Docs Body 객체
+ * @return {string} HTML 문자열
+ */
+function convertDocToHtml(body) {
+  const numChildren = body.getNumChildren();
+  let html = '';
+
+  for (let i = 0; i < numChildren; i++) {
+    const child = body.getChild(i);
+    const type = child.getType();
+
+    if (type === DocumentApp.ElementType.PARAGRAPH) {
+      const paragraph = child.asParagraph();
+      const heading = paragraph.getHeading();
+      const text = paragraph.getText();
+
+      // 빈 줄 무시
+      if (!text.trim()) {
+        continue;
+      }
+
+      // 제목 스타일에 따라 태그 선택
+      if (heading === DocumentApp.ParagraphHeading.HEADING1) {
+        html += '<h1>' + escapeHtml(text) + '</h1>\n';
+      } else if (heading === DocumentApp.ParagraphHeading.HEADING2) {
+        html += '<h2>' + escapeHtml(text) + '</h2>\n';
+      } else if (heading === DocumentApp.ParagraphHeading.HEADING3) {
+        html += '<h3>' + escapeHtml(text) + '</h3>\n';
+      } else if (heading === DocumentApp.ParagraphHeading.HEADING4) {
+        html += '<h4>' + escapeHtml(text) + '</h4>\n';
+      } else {
+        // 일반 단락
+        html += '<p>' + convertParagraphToHtml(paragraph) + '</p>\n';
+      }
+    } else if (type === DocumentApp.ElementType.LIST_ITEM) {
+      const listItem = child.asListItem();
+      const text = listItem.getText();
+      html += '<li>' + escapeHtml(text) + '</li>\n';
+    } else if (type === DocumentApp.ElementType.TABLE) {
+      html += convertTableToHtml(child.asTable());
+    }
+  }
+
+  return html;
+}
+
+/**
+ * 단락 내 텍스트 포맷 처리 (굵기, 이탤릭 등)
+ * @param {Paragraph} paragraph - 단락 객체
+ * @return {string} HTML 문자열
+ */
+function convertParagraphToHtml(paragraph) {
+  const text = paragraph.getText();
+  const numChildren = paragraph.getNumChildren();
+  let html = '';
+
+  for (let i = 0; i < numChildren; i++) {
+    const child = paragraph.getChild(i);
+
+    if (child.getType() === DocumentApp.ElementType.TEXT) {
+      const textElement = child.asText();
+      const textStr = textElement.getText();
+
+      // 간단한 처리: 전체 텍스트만 반환 (포맷 무시)
+      // 더 복잡한 포맷 처리는 필요시 추가 가능
+      html += escapeHtml(textStr);
+    }
+  }
+
+  return html || escapeHtml(text);
+}
+
+/**
+ * 테이블을 HTML로 변환
+ * @param {Table} table - 테이블 객체
+ * @return {string} HTML 문자열
+ */
+function convertTableToHtml(table) {
+  const numRows = table.getNumRows();
+  let html = '<table border="1" style="border-collapse: collapse; width: 100%; margin: 10px 0;">\n';
+
+  for (let i = 0; i < numRows; i++) {
+    const row = table.getRow(i);
+    const numCells = row.getNumCells();
+    html += '<tr>\n';
+
+    for (let j = 0; j < numCells; j++) {
+      const cell = row.getCell(j);
+      const cellText = cell.getText();
+      const tag = i === 0 ? 'th' : 'td';
+      html += '<' + tag + ' style="padding: 8px; border: 1px solid #ddd;">' + escapeHtml(cellText) + '</' + tag + '>\n';
+    }
+
+    html += '</tr>\n';
+  }
+
+  html += '</table>\n';
+  return html;
+}
+
+/**
+ * HTML 이스케이프 처리
+ * @param {string} text - 원본 텍스트
+ * @return {string} 이스케이프된 텍스트
+ */
+function escapeHtml(text) {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+    .replace(/\n/g, '<br>');
+}
