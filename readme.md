@@ -88,9 +88,26 @@ Google Site (iframe) → Apps Script WebApp → Google Spreadsheet → Kakao API
 
 - Google Apps Script
 - Google Spreadsheet
-- Google Calendar
-- Kakao Talk API
+- Google Calendar (예정)
+- Kakao Talk API (예정)
 - HTML/CSS/JavaScript (WebApp UI)
+- Google Docs (약관 관리)
+
+## 현재 구현 상태
+
+### ✅ 완료된 기능
+- 사용자 예약 폼 (반응형 UI)
+- 실시간 가격 계산 및 Room 자동 추천
+- 예약 중복 방지 (시간대 충돌 검사)
+- 예약 내역 자동 저장
+- 예약 현황 로그 (통계/분석용)
+- Google Docs 약관 연동 (자동 업데이트)
+
+### ⏳ 개발 예정
+- 파일 업로드 (사업자등록증)
+- 입금 확인 및 Google Calendar 연동
+- 카카오톡 알림톡 발송
+- 관리자 대시보드
 
 ## 스프레드시트 설정
 
@@ -158,3 +175,35 @@ A6: A+B     | B6: 16      | C6: 88000    | D6: A+B 동시 대관  | E6: Y
 - Google Docs에서 이용약관 문서 작성
 - 문서 ID를 Code.gs의 `getTermsContent()` 함수에 설정
 - 약관 수정 시 Docs만 편집하면 자동 반영
+
+## 다음 개발 단계
+
+### Phase 1: 핵심 기능 완성
+1. **파일 업로드** - 사업자등록증을 Google Drive에 저장
+2. **입금 확인** - 관리자가 입금 확인 시 Google Calendar 자동 업데이트
+3. **Calendar 연동** - 예약 일정 자동 등록
+
+### Phase 2: 알림 시스템
+1. **카카오 알림톡** - 예약 확정, 입실/퇴실 안내 자동 발송
+2. **예약 발송 설정** - 입실 30분 전, 퇴실 30분 전 자동 알림
+
+### Phase 3: 관리 강화
+1. **관리자 페이지** - 예약 목록 조회, 수정, 취소
+2. **통계 대시보드** - 매출 분석, 인기 시간대 분석
+
+## 코드 구조
+
+현재 프로젝트는 단순하고 효율적인 구조로 구성되어 있습니다:
+
+```
+📁 Apps Script 프로젝트
+├── Code.gs        # 모든 백엔드 로직 (약 700줄)
+└── index.html     # UI + CSS + JavaScript (약 1000줄)
+
+📁 외부 연동
+├── Google Spreadsheet  # 데이터베이스
+├── Google Docs         # 약관 관리
+└── Google Drive        # 파일 저장 (예정)
+```
+
+**참고**: Apps Script는 모든 `.gs` 파일이 전역 스코프를 공유하므로, 단일 파일 관리가 더 효율적입니다.
