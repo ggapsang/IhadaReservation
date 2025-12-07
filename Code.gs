@@ -852,3 +852,7 @@ function escapeHtml(text) {
     .replace(/'/g, '&#039;')
     .replace(/\n/g, '<br>');
 }
+
+function testDrivePermission() {
+  DriveApp.createFolder('테스트');
+}
