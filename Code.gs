@@ -354,8 +354,14 @@ function submitReservation(formData) {
 
     // 5. 사업자등록증 업로드 처리 (있는 경우)
     let fileUrl = '';
-    if (formData.taxBill === 'Y' && formData.businessFile) {
-      fileUrl = uploadFile(formData.businessFile, reservationNumber);
+    if (formData.taxBill === 'Y' && formData.businessFileData) {
+      // Base64 데이터를 Blob으로 변환
+      const fileBlob = base64ToBlob(
+        formData.businessFileData,
+        formData.businessFileType,
+        formData.businessFileName
+      );
+      fileUrl = uploadFile(fileBlob, reservationNumber);
     }
 
     // 6. 스프레드시트에 저장
@@ -585,6 +591,115 @@ function logActivity(action, data) {
  */
 function logError(functionName, error) {
   console.error('[ERROR]', functionName, error.toString(), error.stack);
+}
+
+/**
+ * Base64 문자열을 Blob으로 변환
+ * @param {string} base64Data - Base64 인코딩된 데이터
+ * @param {string} mimeType - MIME 타입 (예: image/jpeg, application/pdf)
+ * @param {string} fileName - 파일명
+ * @return {Blob} Blob 객체
+ */
+function base64ToBlob(base64Data, mimeType, fileName) {
+  try {
+    // Base64 문자열을 바이트 배열로 디코딩
+    const bytes = Utilities.base64Decode(base64Data);
+
+    // Blob 생성
+    const blob = Utilities.newBlob(bytes, mimeType, fileName);
+
+    return blob;
+  } catch (error) {
+    logError('base64ToBlob', error);
+    throw new Error('파일 변환 중 오류가 발생했습니다.');
+  }
+}
+
+/**
+ * 파일을 Google Drive에 업로드
+ * @param {Blob} fileBlob - 파일 Blob 객체
+ * @param {string} reservationNumber - 예약번호
+ * @return {string} 업로드된 파일의 Drive URL
+ */
+function uploadFile(fileBlob, reservationNumber) {
+  try {
+    // 파일이 없으면 빈 문자열 반환
+    if (!fileBlob) {
+      return '';
+    }
+
+    // 파일 크기 확인 (10MB 제한)
+    const maxSize = 10 * 1024 * 1024; // 10MB in bytes
+    if (fileBlob.getBytes().length > maxSize) {
+      throw new Error('파일 크기가 10MB를 초과합니다.');
+    }
+
+    // Drive 폴더 찾기 또는 생성
+    const folderName = '예약_사업자등록증';
+    let folder;
+
+    const folders = DriveApp.getFoldersByName(folderName);
+    if (folders.hasNext()) {
+      folder = folders.next();
+    } else {
+      folder = DriveApp.createFolder(folderName);
+      // 폴더를 루트가 아닌 특정 위치에 생성하려면 여기서 설정
+    }
+
+    // 파일명 생성: 예약번호_원본파일명
+    const originalName = fileBlob.getName();
+    const fileName = reservationNumber + '_' + originalName;
+
+    // 파일 업로드
+    const file = folder.createFile(fileBlob.setName(fileName));
+
+    // 파일 공유 설정 (제한된 접근 - 링크 있는 사람만)
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    // 파일 URL 반환
+    const fileUrl = file.getUrl();
+
+    logActivity('파일업로드', {
+      reservationNumber: reservationNumber,
+      fileName: fileName,
+      fileSize: fileBlob.getBytes().length,
+      fileUrl: fileUrl
+    });
+
+    return fileUrl;
+
+  } catch (error) {
+    logError('uploadFile', error);
+    throw new Error('파일 업로드 중 오류가 발생했습니다: ' + error.message);
+  }
+}
+
+/**
+ * Drive 폴더 ID 가져오기 (설정에서 관리)
+ * @return {string} 폴더 ID
+ */
+function getUploadFolderId() {
+  // Script Properties에서 폴더 ID를 가져오거나
+  // 없으면 자동 생성
+  const props = PropertiesService.getScriptProperties();
+  let folderId = props.getProperty('UPLOAD_FOLDER_ID');
+
+  if (!folderId) {
+    const folderName = '예약_사업자등록증';
+    let folder;
+
+    const folders = DriveApp.getFoldersByName(folderName);
+    if (folders.hasNext()) {
+      folder = folders.next();
+    } else {
+      folder = DriveApp.createFolder(folderName);
+    }
+
+    folderId = folder.getId();
+    props.setProperty('UPLOAD_FOLDER_ID', folderId);
+  }
+
+  return folderId;
 }
 
 /**
