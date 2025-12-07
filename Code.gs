@@ -276,6 +276,22 @@ function checkAvailability(date, startTime, endTime, roomType) {
       }
     }
 
+    // 예약현황로그 시트에 조회 기록 저장
+    try {
+      const logSheet = getSheet('예약현황로그');
+      logSheet.appendRow([
+        new Date(),                         // 조회일시
+        roomType,                           // Room타입
+        date,                               // 예약날짜
+        startTime,                          // 시작시간
+        endTime,                            // 종료시간
+        conflicts.length === 0 ? '가능' : '불가'  // 가능여부
+      ]);
+    } catch (logError) {
+      // 로그 실패는 무시 (주 기능에 영향 없음)
+      console.log('예약현황로그 저장 실패:', logError);
+    }
+
     return {
       available: conflicts.length === 0,
       conflictReservations: conflicts
