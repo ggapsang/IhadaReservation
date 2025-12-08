@@ -853,6 +853,251 @@ function escapeHtml(text) {
     .replace(/\n/g, '<br>');
 }
 
+/**
+ * 입금 확인 처리 (관리자용)
+ * @param {string} reservationNumber - 예약번호
+ * @return {Object} { success: true/false, calendarEventId: '...', message: '...' }
+ */
+function confirmPayment(reservationNumber) {
+  try {
+    const sheet = getSheet('예약내역');
+    const data = sheet.getDataRange().getValues();
+
+    // 예약번호로 행 찾기
+    let rowIndex = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === reservationNumber) {
+        rowIndex = i;
+        break;
+      }
+    }
+
+    if (rowIndex === -1) {
+      return {
+        success: false,
+        error: '예약번호를 찾을 수 없습니다: ' + reservationNumber
+      };
+    }
+
+    // 이미 입금 확인된 경우
+    if (data[rowIndex][21] === 'Y') {  // V열: 입금확인
+      return {
+        success: false,
+        error: '이미 입금 확인된 예약입니다.'
+      };
+    }
+
+    // 예약 정보 추출
+    const reservationData = {
+      reservationNumber: data[rowIndex][0],   // A: 예약번호
+      date: data[rowIndex][2],                 // C: 예약날짜
+      startTime: data[rowIndex][3],            // D: 시작시간
+      endTime: data[rowIndex][4],              // E: 종료시간
+      hours: data[rowIndex][5],                // F: 이용시간
+      roomType: data[rowIndex][6],             // G: Room타입
+      companyName: data[rowIndex][7],          // H: 업체명
+      instagram: data[rowIndex][8],            // I: 인스타그램ID
+      name: data[rowIndex][9],                 // J: 이름
+      phone: data[rowIndex][10],               // K: 연락처
+      persons: data[rowIndex][11],             // L: 전체인원
+      cars: data[rowIndex][12],                // M: 차량대수
+      taxBill: data[rowIndex][13],             // N: 세금계산서
+      source: data[rowIndex][14],              // O: 유입경로
+      shootingType: data[rowIndex][15],        // P: 촬영내용
+      totalAmount: data[rowIndex][20]          // U: 총금액
+    };
+
+    // Google Calendar 이벤트 생성
+    const calendarEventId = createCalendarEvent(reservationData);
+
+    // 입금 확인 업데이트
+    const now = new Date();
+    sheet.getRange(rowIndex + 1, 22).setValue('Y');  // V열: 입금확인
+    sheet.getRange(rowIndex + 1, 23).setValue(now);   // W열: 입금확인일시
+    sheet.getRange(rowIndex + 1, 25).setValue(calendarEventId);  // Y열: Calendar이벤트ID
+    sheet.getRange(rowIndex + 1, 26).setValue('예약확정');  // Z열: 알림톡발송상태
+
+    logActivity('입금확인', {
+      reservationNumber: reservationNumber,
+      calendarEventId: calendarEventId,
+      confirmedAt: now
+    });
+
+    return {
+      success: true,
+      calendarEventId: calendarEventId,
+      message: '입금 확인 및 Calendar 등록이 완료되었습니다.',
+      reservationData: reservationData
+    };
+
+  } catch (error) {
+    logError('confirmPayment', error);
+    return {
+      success: false,
+      error: '입금 확인 처리 중 오류가 발생했습니다: ' + error.message
+    };
+  }
+}
+
+/**
+ * Google Calendar에 예약 이벤트 생성
+ * @param {Object} reservationData - 예약 정보 객체
+ * @return {string} Calendar Event ID
+ */
+function createCalendarEvent(reservationData) {
+  try {
+    // 기본 Calendar 가져오기
+    const calendar = CalendarApp.getDefaultCalendar();
+
+    // 이벤트 제목
+    const title = '[' + reservationData.roomType + '] ' +
+                  reservationData.companyName + ' - ' +
+                  reservationData.shootingType;
+
+    // 시작/종료 시간 생성
+    const startDateTime = new Date(reservationData.date + ' ' + reservationData.startTime);
+    const endDateTime = new Date(reservationData.date + ' ' + reservationData.endTime);
+
+    // 이벤트 설명 (상세 정보)
+    const description =
+      '=== 예약 정보 ===\n' +
+      '예약번호: ' + reservationData.reservationNumber + '\n' +
+      '업체명: ' + reservationData.companyName + '\n' +
+      (reservationData.instagram ? '인스타그램: ' + reservationData.instagram + '\n' : '') +
+      '\n' +
+      '=== 예약자 정보 ===\n' +
+      '이름: ' + reservationData.name + '\n' +
+      '연락처: ' + reservationData.phone + '\n' +
+      '\n' +
+      '=== 방문 정보 ===\n' +
+      '전체 인원: ' + reservationData.persons + '명\n' +
+      '차량 대수: ' + reservationData.cars + '대\n' +
+      '\n' +
+      '=== 촬영 정보 ===\n' +
+      '촬영 내용: ' + reservationData.shootingType + '\n' +
+      '이용 시간: ' + reservationData.hours + '시간\n' +
+      '\n' +
+      '=== 결제 정보 ===\n' +
+      '총 금액: ' + (reservationData.totalAmount ? reservationData.totalAmount.toLocaleString() : '0') + '원\n' +
+      '세금계산서: ' + (reservationData.taxBill === 'Y' ? '발행' : '미발행') + '\n' +
+      '\n' +
+      '유입 경로: ' + reservationData.source;
+
+    // 이벤트 생성
+    const event = calendar.createEvent(
+      title,
+      startDateTime,
+      endDateTime,
+      {
+        description: description,
+        location: '스튜디오 ' + reservationData.roomType
+      }
+    );
+
+    // 알림 설정 (30분 전)
+    event.addPopupReminder(30);
+
+    // 이벤트 ID 반환
+    const eventId = event.getId();
+
+    logActivity('Calendar이벤트생성', {
+      reservationNumber: reservationData.reservationNumber,
+      eventId: eventId,
+      title: title,
+      startTime: startDateTime,
+      endTime: endDateTime
+    });
+
+    return eventId;
+
+  } catch (error) {
+    logError('createCalendarEvent', error);
+    throw new Error('Calendar 이벤트 생성 실패: ' + error.message);
+  }
+}
+
+/**
+ * Calendar 이벤트 삭제 (예약 취소 시 사용)
+ * @param {string} eventId - Calendar Event ID
+ * @return {boolean} 성공 여부
+ */
+function deleteCalendarEvent(eventId) {
+  try {
+    const calendar = CalendarApp.getDefaultCalendar();
+    const event = calendar.getEventById(eventId);
+
+    if (event) {
+      event.deleteEvent();
+      logActivity('Calendar이벤트삭제', { eventId: eventId });
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    logError('deleteCalendarEvent', error);
+    return false;
+  }
+}
+
+/**
+ * 예약번호로 예약 정보 조회
+ * @param {string} reservationNumber - 예약번호
+ * @return {Object} 예약 정보 객체 또는 null
+ */
+function getReservationByNumber(reservationNumber) {
+  try {
+    const sheet = getSheet('예약내역');
+    const data = sheet.getDataRange().getValues();
+
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === reservationNumber) {
+        return {
+          rowIndex: i,
+          reservationNumber: data[i][0],
+          applicationDate: data[i][1],
+          date: data[i][2],
+          startTime: data[i][3],
+          endTime: data[i][4],
+          hours: data[i][5],
+          roomType: data[i][6],
+          companyName: data[i][7],
+          instagram: data[i][8],
+          name: data[i][9],
+          phone: data[i][10],
+          persons: data[i][11],
+          cars: data[i][12],
+          taxBill: data[i][13],
+          source: data[i][14],
+          shootingType: data[i][15],
+          basePrice: data[i][16],
+          extraPersonFee: data[i][17],
+          subtotal: data[i][18],
+          vat: data[i][19],
+          totalAmount: data[i][20],
+          paymentConfirmed: data[i][21],
+          paymentConfirmedDate: data[i][22],
+          businessFile: data[i][23],
+          calendarEventId: data[i][24],
+          notificationStatus: data[i][25],
+          notes: data[i][26]
+        };
+      }
+    }
+
+    return null;
+  } catch (error) {
+    logError('getReservationByNumber', error);
+    return null;
+  }
+}
+
+function testDrivePermission() {
+  DriveApp.createFolder('테스트');
+}
+
+function testCalendarPermission() {
+  CalendarApp.getDefaultCalendar();
+}
 function testDrivePermission() {
   DriveApp.createFolder('테스트');
 }
