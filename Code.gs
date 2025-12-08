@@ -1098,3 +1098,6 @@ function testDrivePermission() {
 function testCalendarPermission() {
   CalendarApp.getDefaultCalendar();
 }
+function testDrivePermission() {
+  DriveApp.createFolder('테스트');
+}

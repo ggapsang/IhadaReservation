@@ -1,0 +1,32 @@
+bit.ly 사용법 (URL 단축)
+bit.ly는 긴 URL을 짧게 만들어주는 무료 서비스입니다.
+
+사용 방법:
+
+방법 1: 회원가입 없이 사용 (무료)
+
+https://bitly.com 접속
+
+긴 URL 붙여넣기
+
+https://script.google.com/macros/s/AKfycby.../exec
+
+"Create" 버튼 클릭
+
+짧아진 URL 복사
+
+https://bit.ly/abc123
+
+방법 2: 회원가입 후 사용 (추천)
+
+장점:
+- 클릭 통계 확인 가능
+- 커스텀 URL 생성 가능 (예: bit.ly/studio-reservation)
+- 여러 링크 관리 가능
+
+방법 3: Google 자체 URL 단축 (추천)
+Google Apps Script에는 UrlShortener API가 있었지만 종료되었습니다.
+대안: QR 코드 생성 긴 URL을 QR 코드로 만들어서 사용하는 것도 좋습니다:
+
+https://www.qr-code-generator.com/
+Apps Script URL 입력 → QR 코드 생성 → 포스터나 명함에 사용
