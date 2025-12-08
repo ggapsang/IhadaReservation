@@ -1098,3 +1098,156 @@ function testDrivePermission() {
 function testCalendarPermission() {
   CalendarApp.getDefaultCalendar();
 }
+
+/**
+ * 스프레드시트 버튼용 - 선택된 행의 입금 확인 처리
+ * 사용법: 예약내역 시트에서 해당 행을 선택하고 버튼 클릭
+ */
+function confirmPaymentFromSheet() {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('예약내역');
+    const activeRange = sheet.getActiveRange();
+    const row = activeRange.getRow();
+
+    // 헤더 행인 경우
+    if (row === 1) {
+      SpreadsheetApp.getUi().alert('헤더 행은 선택할 수 없습니다. 예약 데이터 행을 선택해주세요.');
+      return;
+    }
+
+    // 예약번호 가져오기 (A열)
+    const reservationNumber = sheet.getRange(row, 1).getValue();
+
+    if (!reservationNumber) {
+      SpreadsheetApp.getUi().alert('예약번호가 없습니다. 올바른 예약 행을 선택해주세요.');
+      return;
+    }
+
+    // 입금 확인 처리
+    const result = confirmPayment(reservationNumber);
+
+    // 결과 알림
+    if (result.success) {
+      SpreadsheetApp.getUi().alert(
+        '✅ 입금 확인 완료\n\n' +
+        '예약번호: ' + reservationNumber + '\n' +
+        '업체명: ' + result.reservationData.companyName + '\n' +
+        '예약날짜: ' + result.reservationData.date + '\n' +
+        'Room: ' + result.reservationData.roomType + '\n\n' +
+        'Google Calendar에 일정이 등록되었습니다.'
+      );
+    } else {
+      SpreadsheetApp.getUi().alert('❌ 오류 발생\n\n' + result.error);
+    }
+
+  } catch (error) {
+    logError('confirmPaymentFromSheet', error);
+    SpreadsheetApp.getUi().alert('❌ 오류 발생\n\n' + error.message);
+  }
+}
+
+/**
+ * 스프레드시트 열릴 때 커스텀 메뉴 추가
+ */
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('🎬 예약 관리')
+    .addItem('💰 입금 확인 (선택된 행)', 'confirmPaymentFromSheet')
+    .addSeparator()
+    .addItem('📅 Calendar 이벤트 삭제', 'deleteCalendarEventFromSheet')
+    .addSeparator()
+    .addItem('📊 예약 현황 보기', 'showReservationSummary')
+    .addToUi();
+}
+
+/**
+ * 선택된 행의 Calendar 이벤트 삭제
+ */
+function deleteCalendarEventFromSheet() {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('예약내역');
+    const activeRange = sheet.getActiveRange();
+    const row = activeRange.getRow();
+
+    if (row === 1) {
+      SpreadsheetApp.getUi().alert('헤더 행은 선택할 수 없습니다.');
+      return;
+    }
+
+    // Calendar 이벤트 ID 가져오기 (Y열 = 25)
+    const eventId = sheet.getRange(row, 25).getValue();
+
+    if (!eventId) {
+      SpreadsheetApp.getUi().alert('Calendar 이벤트 ID가 없습니다.');
+      return;
+    }
+
+    // 확인 대화상자
+    const response = SpreadsheetApp.getUi().alert(
+      'Calendar 이벤트 삭제',
+      'Google Calendar에서 이 예약의 일정을 삭제하시겠습니까?',
+      SpreadsheetApp.getUi().ButtonSet.YES_NO
+    );
+
+    if (response === SpreadsheetApp.getUi().Button.YES) {
+      const success = deleteCalendarEvent(eventId);
+
+      if (success) {
+        // 스프레드시트에서도 이벤트 ID 제거
+        sheet.getRange(row, 25).setValue('');
+        SpreadsheetApp.getUi().alert('✅ Calendar 이벤트가 삭제되었습니다.');
+      } else {
+        SpreadsheetApp.getUi().alert('❌ Calendar 이벤트 삭제에 실패했습니다.');
+      }
+    }
+
+  } catch (error) {
+    logError('deleteCalendarEventFromSheet', error);
+    SpreadsheetApp.getUi().alert('❌ 오류 발생\n\n' + error.message);
+  }
+}
+
+/**
+ * 예약 현황 요약 표시
+ */
+function showReservationSummary() {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('예약내역');
+    const data = sheet.getDataRange().getValues();
+
+    let totalReservations = data.length - 1;  // 헤더 제외
+    let confirmedPayments = 0;
+    let pendingPayments = 0;
+    let totalAmount = 0;
+    let confirmedAmount = 0;
+
+    for (let i = 1; i < data.length; i++) {
+      const paymentConfirmed = data[i][21];  // V열
+      const amount = data[i][20] || 0;       // U열
+
+      totalAmount += amount;
+
+      if (paymentConfirmed === 'Y') {
+        confirmedPayments++;
+        confirmedAmount += amount;
+      } else {
+        pendingPayments++;
+      }
+    }
+
+    const message =
+      '📊 예약 현황 요약\n\n' +
+      '총 예약 건수: ' + totalReservations + '건\n' +
+      '입금 확인: ' + confirmedPayments + '건\n' +
+      '입금 대기: ' + pendingPayments + '건\n\n' +
+      '총 예약 금액: ' + totalAmount.toLocaleString() + '원\n' +
+      '확정 금액: ' + confirmedAmount.toLocaleString() + '원\n' +
+      '대기 금액: ' + (totalAmount - confirmedAmount).toLocaleString() + '원';
+
+    SpreadsheetApp.getUi().alert(message);
+
+  } catch (error) {
+    logError('showReservationSummary', error);
+    SpreadsheetApp.getUi().alert('❌ 오류 발생\n\n' + error.message);
+  }
+}
