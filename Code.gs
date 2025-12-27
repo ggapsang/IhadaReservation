@@ -949,14 +949,20 @@ function createCalendarEvent(reservationData) {
     // 기본 Calendar 가져오기
     const calendar = CalendarApp.getDefaultCalendar();
 
+    // 시작 시간 생성
+    const startDateTime = new Date(reservationData.date);
+    startDateTime.setHours(reservationData.startTime.getHours());
+    startDateTime.setMinutes(reservationData.startTime.getMinutes());
+
+    // 종료 시간 생성
+    const endDateTime = new Date(reservationData.date);
+    endDateTime.setHours(reservationData.endTime.getHours());
+    endDateTime.setMinutes(reservationData.endTime.getMinutes());
+
     // 이벤트 제목
     const title = '[' + reservationData.roomType + '] ' +
                   reservationData.companyName + ' - ' +
                   reservationData.shootingType;
-
-    // 시작/종료 시간 생성
-    const startDateTime = new Date(reservationData.date + ' ' + reservationData.startTime);
-    const endDateTime = new Date(reservationData.date + ' ' + reservationData.endTime);
 
     // 이벤트 설명 (상세 정보)
     const description =
