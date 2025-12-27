@@ -853,91 +853,6 @@ function escapeHtml(text) {
     .replace(/\n/g, '<br>');
 }
 
-/**
- * 입금 확인 처리 (관리자용)
- * @param {string} reservationNumber - 예약번호
- * @return {Object} { success: true/false, calendarEventId: '...', message: '...' }
- */
-function confirmPayment(reservationNumber) {
-  try {
-    const sheet = getSheet('예약내역');
-    const data = sheet.getDataRange().getValues();
-
-    // 예약번호로 행 찾기
-    let rowIndex = -1;
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === reservationNumber) {
-        rowIndex = i;
-        break;
-      }
-    }
-
-    if (rowIndex === -1) {
-      return {
-        success: false,
-        error: '예약번호를 찾을 수 없습니다: ' + reservationNumber
-      };
-    }
-
-    // 이미 입금 확인된 경우
-    if (data[rowIndex][21] === 'Y') {  // V열: 입금확인
-      return {
-        success: false,
-        error: '이미 입금 확인된 예약입니다.'
-      };
-    }
-
-    // 예약 정보 추출
-    const reservationData = {
-      reservationNumber: data[rowIndex][0],   // A: 예약번호
-      date: data[rowIndex][2],                 // C: 예약날짜
-      startTime: data[rowIndex][3],            // D: 시작시간
-      endTime: data[rowIndex][4],              // E: 종료시간
-      hours: data[rowIndex][5],                // F: 이용시간
-      roomType: data[rowIndex][6],             // G: Room타입
-      companyName: data[rowIndex][7],          // H: 업체명
-      instagram: data[rowIndex][8],            // I: 인스타그램ID
-      name: data[rowIndex][9],                 // J: 이름
-      phone: data[rowIndex][10],               // K: 연락처
-      persons: data[rowIndex][11],             // L: 전체인원
-      cars: data[rowIndex][12],                // M: 차량대수
-      taxBill: data[rowIndex][13],             // N: 세금계산서
-      source: data[rowIndex][14],              // O: 유입경로
-      shootingType: data[rowIndex][15],        // P: 촬영내용
-      totalAmount: data[rowIndex][20]          // U: 총금액
-    };
-
-    // Google Calendar 이벤트 생성
-    const calendarEventId = createCalendarEvent(reservationData);
-
-    // 입금 확인 업데이트
-    const now = new Date();
-    sheet.getRange(rowIndex + 1, 22).setValue('Y');  // V열: 입금확인
-    sheet.getRange(rowIndex + 1, 23).setValue(now);   // W열: 입금확인일시
-    sheet.getRange(rowIndex + 1, 25).setValue(calendarEventId);  // Y열: Calendar이벤트ID
-    sheet.getRange(rowIndex + 1, 26).setValue('예약확정');  // Z열: 알림톡발송상태
-
-    logActivity('입금확인', {
-      reservationNumber: reservationNumber,
-      calendarEventId: calendarEventId,
-      confirmedAt: now
-    });
-
-    return {
-      success: true,
-      calendarEventId: calendarEventId,
-      message: '입금 확인 및 Calendar 등록이 완료되었습니다.',
-      reservationData: reservationData
-    };
-
-  } catch (error) {
-    logError('confirmPayment', error);
-    return {
-      success: false,
-      error: '입금 확인 처리 중 오류가 발생했습니다: ' + error.message
-    };
-  }
-}
 
 /**
  * Google Calendar에 예약 이벤트 생성
@@ -1022,80 +937,6 @@ function createCalendarEvent(reservationData) {
   }
 }
 
-/**
- * Calendar 이벤트 삭제 (예약 취소 시 사용)
- * @param {string} eventId - Calendar Event ID
- * @return {boolean} 성공 여부
- */
-function deleteCalendarEvent(eventId) {
-  try {
-    const calendar = CalendarApp.getDefaultCalendar();
-    const event = calendar.getEventById(eventId);
-
-    if (event) {
-      event.deleteEvent();
-      logActivity('Calendar이벤트삭제', { eventId: eventId });
-      return true;
-    }
-
-    return false;
-  } catch (error) {
-    logError('deleteCalendarEvent', error);
-    return false;
-  }
-}
-
-/**
- * 예약번호로 예약 정보 조회
- * @param {string} reservationNumber - 예약번호
- * @return {Object} 예약 정보 객체 또는 null
- */
-function getReservationByNumber(reservationNumber) {
-  try {
-    const sheet = getSheet('예약내역');
-    const data = sheet.getDataRange().getValues();
-
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === reservationNumber) {
-        return {
-          rowIndex: i,
-          reservationNumber: data[i][0],
-          applicationDate: data[i][1],
-          date: data[i][2],
-          startTime: data[i][3],
-          endTime: data[i][4],
-          hours: data[i][5],
-          roomType: data[i][6],
-          companyName: data[i][7],
-          instagram: data[i][8],
-          name: data[i][9],
-          phone: data[i][10],
-          persons: data[i][11],
-          cars: data[i][12],
-          taxBill: data[i][13],
-          source: data[i][14],
-          shootingType: data[i][15],
-          basePrice: data[i][16],
-          extraPersonFee: data[i][17],
-          subtotal: data[i][18],
-          vat: data[i][19],
-          totalAmount: data[i][20],
-          paymentConfirmed: data[i][21],
-          paymentConfirmedDate: data[i][22],
-          businessFile: data[i][23],
-          calendarEventId: data[i][24],
-          notificationStatus: data[i][25],
-          notes: data[i][26]
-        };
-      }
-    }
-
-    return null;
-  } catch (error) {
-    logError('getReservationByNumber', error);
-    return null;
-  }
-}
 
 function testDrivePermission() {
   DriveApp.createFolder('테스트');
@@ -1104,6 +945,62 @@ function testDrivePermission() {
 function testCalendarPermission() {
   CalendarApp.getDefaultCalendar();
 }
-function testDrivePermission() {
-  DriveApp.createFolder('테스트');
+
+/**
+ * V열 체크박스 확인하여 Calendar 동기화
+ * 이미지/버튼에 할당하여 사용
+ */
+function syncToCalendar() {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('예약내역');
+    const data = sheet.getDataRange().getValues();
+
+    let processedCount = 0;
+
+    // 2번째 행부터 순회 (1번째는 헤더)
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const isChecked = row[21];  // V열: 입금확인 체크박스
+      const processedDate = row[22];  // W열: 입금확인일시 (처리 여부 확인)
+
+      // V열이 체크되어 있고, W열이 비어있으면 처리
+      if (isChecked === true && !processedDate) {
+        // 예약 정보 추출
+        const reservationData = {
+          reservationNumber: row[0],
+          date: row[2],
+          startTime: row[3],
+          endTime: row[4],
+          hours: row[5],
+          roomType: row[6],
+          companyName: row[7],
+          instagram: row[8],
+          name: row[9],
+          phone: row[10],
+          persons: row[11],
+          cars: row[12],
+          taxBill: row[13],
+          source: row[14],
+          shootingType: row[15],
+          totalAmount: row[20]
+        };
+
+        // Calendar 이벤트 생성
+        createCalendarEvent(reservationData);
+
+        // W열에 처리 날짜 기록
+        const now = new Date();
+        sheet.getRange(i + 1, 23).setValue(now);  // W열
+
+        processedCount++;
+      }
+    }
+
+    // 완료 메시지
+    SpreadsheetApp.getUi().alert('Calendar 동기화 완료\n\n처리된 예약: ' + processedCount + '건');
+
+  } catch (error) {
+    logError('syncToCalendar', error);
+    SpreadsheetApp.getUi().alert('❌ 오류 발생\n\n' + error.message);
+  }
 }
