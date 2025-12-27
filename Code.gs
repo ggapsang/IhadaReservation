@@ -1001,6 +1001,6 @@ function syncToCalendar() {
 
   } catch (error) {
     logError('syncToCalendar', error);
-    SpreadsheetApp.getUi().alert('❌ 오류 발생\n\n' + error.message);
+    SpreadsheetApp.getUi().alert('오류 발생\n\n' + error.message);
   }
 }
