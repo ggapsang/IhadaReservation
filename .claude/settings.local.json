@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls \"c:/Users/ggaps/.claude/plans/\" 2>/dev/null || echo \"plans dir not yet listed\")",
+      "Read(//c/Users/ggaps/.claude/plans/**)"
+    ]
+  }
+}
