@@ -77,7 +77,7 @@ function submitReservation(formData) {
       fileUrl = uploadFile(fileBlob, reservationNumber);
     }
 
-    // 6. 예약내역 시트에 저장 — 신규 32컬럼 양식, 결제·옵션 9개는 빈 셀로 자동 채워짐
+    // 6. 예약내역 시트에 저장 (25컬럼 양식)
     var sheet = getSheet('예약내역');
     var now = new Date();
     sheet.appendRow([
@@ -103,8 +103,9 @@ function submitReservation(formData) {
       '',                       // T 입금확인일시
       fileUrl,                  // U 사업자등록증
       '',                       // V Calendar이벤트ID
-      '대기'                    // W 알림톡발송상태
-      // X~AF: 옵션·결제 9개 — Phase 1에서 setValue로 기록
+      '대기',                   // W 알림톡발송상태
+      '',                       // X 환불금액
+      ''                        // Y 환불일시
     ]);
 
     log(LOG_LEVEL.INFO, 'reservation.submitted', {

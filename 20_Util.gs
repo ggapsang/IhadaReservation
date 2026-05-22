@@ -200,8 +200,7 @@ var LOG_LEVEL = { INFO: 'INFO', WARN: 'WARN', ERROR: 'ERROR' };
 
 /**
  * 표준 로깅 함수.
- * - INFO/WARN: 콘솔만
- * - ERROR: 콘솔 + 결제로그 시트 영구 기록 (이벤트유형='ERROR')
+ * - INFO/WARN/ERROR 모두 콘솔에 기록 (시트 의존성 없음)
  * 민감정보는 maskSensitive로 자동 마스킹.
  *
  * @param {string} level - INFO | WARN | ERROR
@@ -216,40 +215,11 @@ function log(level, event, data) {
 
   if (level === LOG_LEVEL.ERROR) {
     console.error(line);
-    try { _appendErrorToPaymentLog(event, masked); } catch (e) { console.error('결제로그 기록 실패:', e); }
   } else if (level === LOG_LEVEL.WARN) {
     console.warn(line);
   } else {
     console.log(line);
   }
-}
-
-/**
- * ERROR 레벨을 결제로그 시트에 영구 기록.
- * 결제 컨텍스트가 없는 일반 에러도 동일 시트에 기록 (이벤트유형='ERROR').
- * 시트가 없으면 조용히 스킵 (initializePaymentSchema 이전 환경 호환).
- * @private
- */
-function _appendErrorToPaymentLog(event, data) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName('결제로그');
-  if (!sheet) return;
-  var orderId = (data && data.orderId) ? data.orderId : '';
-  var paymentKey = (data && data.paymentKey) ? data.paymentKey : '';
-  var amount = (data && typeof data.amount === 'number') ? data.amount : '';
-  var detailJson;
-  try { detailJson = JSON.stringify(data || {}); } catch (e) { detailJson = String(data); }
-  sheet.appendRow([
-    generateUUID(),          // A: 로그ID
-    new Date(),              // B: 일시
-    orderId,                 // C: 주문번호
-    'ERROR',                 // D: 이벤트유형
-    paymentKey,              // E: 결제ID
-    amount,                  // F: 금액
-    '',                      // G: 응답코드
-    event || '',             // H: 응답메시지 (간단 식별)
-    detailJson               // I: 상세 JSON
-  ]);
 }
 
 // ==========================================
