@@ -655,7 +655,8 @@
         </div>
 
         <!-- 10. 제출 버튼 -->
-        <button type="submit" class="submit-btn" id="submitBtn">
+        <div id="submitBtnHint" style="display:none; margin-bottom:12px; padding:14px 16px; border-radius:12px; background:rgba(255,59,48,0.08); border:1px solid rgba(255,59,48,0.2); color:#C8332B; font-size:13px; line-height:1.6;"></div>
+        <button type="submit" class="submit-btn" id="submitBtn" disabled>
           예약 신청하기
         </button>
       </form>
@@ -706,6 +707,8 @@
         .withSuccessHandler(function (data) {
           settings = data;
           console.log('설정 로드 완료:', settings);
+          // 설정에 따라 minHours가 바뀔 수 있으므로 재평가
+          if (typeof updateSubmitButtonState === 'function') updateSubmitButtonState();
         })
         .withFailureHandler(function (error) {
           console.error('설정 로드 실패:', error);
@@ -761,22 +764,35 @@
     // 이벤트 리스너 설정
     // ==========================================
     function setupEventListeners() {
-      // 인원 변경 시 가격 재계산
-      document.getElementById('persons').addEventListener('input', calculatePriceUI);
+      // 인원 변경
+      document.getElementById('persons').addEventListener('input', function () {
+        calculatePriceUI();
+        updateSubmitButtonState();
+      });
 
-      // 시간 변경 시
+      // 시간 변경
       document.getElementById('startTime').addEventListener('change', function () {
         calculateDuration();
         calculatePriceUI();
+        updateSubmitButtonState();
       });
 
       document.getElementById('endTime').addEventListener('change', function () {
         calculateDuration();
         calculatePriceUI();
+        updateSubmitButtonState();
       });
 
       // 날짜 변경 시 평일/주말 가격 차이 반영
-      document.getElementById('date').addEventListener('change', calculatePriceUI);
+      document.getElementById('date').addEventListener('change', function () {
+        calculatePriceUI();
+        updateSubmitButtonState();
+      });
+
+      // 텍스트/이메일 필드 — 입력 즉시 검증
+      ['name', 'phone', 'email'].forEach(function (id) {
+        document.getElementById(id).addEventListener('input', updateSubmitButtonState);
+      });
 
       // 세금계산서 선택 시
       document.querySelectorAll('input[name="taxBill"]').forEach(function (radio) {
@@ -787,6 +803,7 @@
           } else {
             fileSection.style.display = 'none';
           }
+          updateSubmitButtonState();
         });
       });
 
@@ -805,7 +822,11 @@
             fileName.textContent = '선택된 파일: ' + file.name + ' (' + sizeMB + 'MB)';
           }
         }
+        updateSubmitButtonState();
       });
+
+      // 약관 동의
+      document.getElementById('agreeTerms').addEventListener('change', updateSubmitButtonState);
 
       // 연락처 자동 포맷팅
       document.getElementById('phone').addEventListener('input', function () {
@@ -820,6 +841,107 @@
 
       // 폼 제출
       document.getElementById('reservationForm').addEventListener('submit', handleSubmit);
+
+      // 초기 상태 적용 (비활성화 상태에서 시작)
+      updateSubmitButtonState();
+    }
+
+    // ==========================================
+    // 폼 전체 상태 평가 + 제출 버튼 활성화 제어
+    // ==========================================
+    /**
+     * 모든 입력 조건을 평가하여 미충족 사유 전체를 배열로 반환합니다.
+     * @return {string[]} 빈 배열이면 모든 조건 충족
+     */
+    function evaluateFormState() {
+      const reasons = [];
+
+      // 이름
+      const name = document.getElementById('name').value.trim();
+      if (!name) reasons.push('이름을 입력해주세요.');
+
+      // 연락처
+      const phone = document.getElementById('phone').value;
+      if (!phone) reasons.push('연락처를 입력해주세요.');
+      else if (!/^010-\d{4}-\d{4}$/.test(phone)) reasons.push('연락처는 010-0000-0000 형식으로 입력해주세요.');
+
+      // 이메일
+      const email = document.getElementById('email').value.trim();
+      if (!email) reasons.push('이메일을 입력해주세요.');
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) reasons.push('이메일 형식이 올바르지 않습니다.');
+
+      // 날짜
+      const date = document.getElementById('date').value;
+      if (!date) reasons.push('예약 날짜를 선택해주세요.');
+
+      // 시작/종료 시간
+      const startTime = document.getElementById('startTime').value;
+      const endTime = document.getElementById('endTime').value;
+      if (!startTime) reasons.push('시작 시간을 선택해주세요.');
+      if (!endTime) reasons.push('종료 시간을 선택해주세요.');
+
+      if (startTime && endTime) {
+        const start = timeToMinutes(startTime);
+        const end = timeToMinutes(endTime);
+        if (end <= start) {
+          reasons.push('종료 시간은 시작 시간보다 늦어야 합니다.');
+        } else {
+          const hours = (end - start) / 60;
+          const minHours = getMinHours();
+          if (hours < minHours) {
+            reasons.push('최소 이용 시간은 ' + minHours + '시간입니다. (현재 ' + hours + '시간)');
+          }
+        }
+      }
+
+      // 인원
+      const personsRaw = document.getElementById('persons').value;
+      if (!personsRaw) {
+        reasons.push('인원을 입력해주세요.');
+      } else {
+        const persons = parseInt(personsRaw, 10);
+        if (isNaN(persons) || persons < 1) reasons.push('인원은 1명 이상이어야 합니다.');
+        else if (persons > 8) reasons.push('최대 입실 가능 인원은 8명입니다. (현재 ' + persons + '명)');
+      }
+
+      // 세금계산서
+      const taxBillEl = document.querySelector('input[name="taxBill"]:checked');
+      if (!taxBillEl) {
+        reasons.push('세금계산서 발행 여부를 선택해주세요.');
+      } else if (taxBillEl.value === 'Y') {
+        const businessFile = document.getElementById('businessFile').files[0];
+        if (!businessFile) reasons.push('세금계산서 발행을 위해 사업자등록증을 첨부해주세요.');
+      }
+
+      // 약관 동의
+      if (!document.getElementById('agreeTerms').checked) reasons.push('이용 약관에 동의해주세요.');
+
+      return reasons;
+    }
+
+    /**
+     * 폼 상태에 따라 제출 버튼 활성화 + 미충족 사유 전체 표시.
+     */
+    function updateSubmitButtonState() {
+      const reasons = evaluateFormState();
+      const btn = document.getElementById('submitBtn');
+      const hint = document.getElementById('submitBtnHint');
+      if (reasons.length > 0) {
+        btn.disabled = true;
+        if (hint) {
+          hint.innerHTML = '<div style="font-weight:600; margin-bottom:6px;">⚠️ 아래 조건을 모두 충족해야 예약 신청이 가능합니다 (' + reasons.length + '건)</div>' +
+                           '<ul style="margin:0; padding-left:20px;">' +
+                           reasons.map(function (r) { return '<li>' + r + '</li>'; }).join('') +
+                           '</ul>';
+          hint.style.display = 'block';
+        }
+      } else {
+        btn.disabled = false;
+        if (hint) {
+          hint.innerHTML = '';
+          hint.style.display = 'none';
+        }
+      }
     }
 
     // ==========================================
@@ -916,7 +1038,15 @@
     function handleSubmit(e) {
       e.preventDefault();
 
-      // 유효성 검증
+      // 1차 차단: 폼 상태 미충족이면 즉시 거부 + 버튼 강제 비활성화
+      const reasons = evaluateFormState();
+      if (reasons.length > 0) {
+        updateSubmitButtonState();
+        showAlert('예약 신청 조건이 충족되지 않았습니다 (' + reasons.length + '건):\n• ' + reasons.join('\n• '), 'error');
+        return;
+      }
+
+      // 2차 차단: 기존 폼 검증
       if (!validateForm()) return;
 
       const date = document.getElementById('date').value;
@@ -1094,7 +1224,8 @@
       } else {
         loading.classList.remove('active');
         form.style.display = 'block';
-        btn.disabled = false;
+        // 폼 상태를 재평가하여 비활성화 조건을 다시 적용
+        updateSubmitButtonState();
       }
     }
 
