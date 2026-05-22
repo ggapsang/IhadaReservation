@@ -126,69 +126,93 @@ function processPaymentWebhook(payload, signature) {
 // ==========================================
 
 /**
- * Apps Script 에디터에서 1회 실행. 명세서 Task 0-2의 모든 스키마 변경을 idempotent하게 적용.
+ * Apps Script 에디터에서 1회 실행. 260522 약관 기준 신규 32컬럼 양식으로 스키마를 구성합니다.
  *
- *  - 예약내역 컬럼 AB~AJ (28~36) 추가 (헤더 누락 시만)
- *  - 신규 시트 3개: 옵션상품, 임시주문, 결제로그
- *  - 설정 시트에 결제 관련 키 6개 추가 (누락된 키만)
+ * 예약내역 컬럼 (총 32개):
+ *   A 예약번호 / B 신청일시 / C 예약날짜 / D 시작시간 / E 종료시간 / F 이용시간 /
+ *   G 이름 / H 연락처 / I 이메일 / J 전체인원 / K 세금계산서 /
+ *   L 기본요금 / M 시간추가요금 / N 인원추가요금 / O 소계 / P VAT / Q 보증금 / R 총금액 /
+ *   S 입금확인 / T 입금확인일시 / U 사업자등록증 /
+ *   V Calendar이벤트ID / W 알림톡발송상태 /
+ *   X 옵션상품 / Y 옵션금액 / Z 주문번호 / AA 결제ID / AB 결제수단 / AC 결제상태 /
+ *   AD 결제완료일시 / AE 환불금액 / AF 환불일시
  *
- * 기존 데이터는 절대 수정하지 않음.
- * V열(입금확인) 시프트 사고 방지를 위해 사전 가드 포함.
+ * 신규 시트 3종(옵션상품/임시주문/결제로그): Phase 1 결제 모듈용 자리, 본 함수가 헤더만 생성.
  *
- * @return {{addedColumns:Array, createdSheets:Array, addedSettings:Array}}
+ * 설정 시트 결제 운영 키 6종 추가 (없으면 append).
+ *
+ * 안전성:
+ *  - 예약내역에 이미 행이 들어있고 헤더가 신규 32컬럼 양식과 다르면 throw — 데이터 오염 방지.
+ *  - 빈 시트(헤더만 있거나 행 없음)는 32컬럼 헤더로 일괄 생성.
+ *  - 신규 시트/설정 키는 idempotent.
+ *
+ * @return {{createdHeader:boolean, createdSheets:Array, addedSettings:Array}}
  */
 function initializePaymentSchema() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var report = { addedColumns: [], createdSheets: [], addedSettings: [] };
+  var report = { createdHeader: false, createdSheets: [], addedSettings: [] };
 
-  // 1. 예약내역 컬럼 AB~AJ
+  // 신규 32컬럼 표준 헤더
+  var STANDARD_HEADER = [
+    '예약번호', '신청일시', '예약날짜', '시작시간', '종료시간', '이용시간',
+    '이름', '연락처', '이메일', '전체인원', '세금계산서',
+    '기본요금', '시간추가요금', '인원추가요금', '소계', 'VAT', '보증금', '총금액',
+    '입금확인', '입금확인일시', '사업자등록증',
+    'Calendar이벤트ID', '알림톡발송상태',
+    '옵션상품', '옵션금액', '주문번호', '결제ID', '결제수단', '결제상태',
+    '결제완료일시', '환불금액', '환불일시'
+  ];
+
+  // 1. 예약내역 시트
   var resSheet = ss.getSheetByName('예약내역') || getSheet('예약내역');
+  var lastRow = resSheet.getLastRow();
   var lastCol = resSheet.getLastColumn();
-  if (lastCol > 0) {
-    var header = resSheet.getRange(1, 1, 1, lastCol).getValues()[0];
-    // 가드 — 명세서 가정 깨졌으면 즉시 throw
-    if (header.length >= 22 && header[21] && header[21] !== '입금확인') {
-      throw new Error('스키마 가정 깨짐: V열(22번째)이 입금확인이 아닙니다. 발견: "' + header[21] + '". 수동 확인 후 재시도하세요.');
-    }
-    var expected = ['옵션상품', '옵션금액', '주문번호', '결제ID', '결제수단', '결제상태', '결제완료일시', '환불금액', '환불일시'];
-    for (var i = 0; i < expected.length; i++) {
-      var name = expected[i];
-      var col = 28 + i;  // AB=28
-      // 헤더에 이미 같은 이름이 있는지 검사 (위치는 상관없음)
-      var found = false;
-      for (var h = 0; h < header.length; h++) {
-        if (header[h] === name) { found = true; break; }
-      }
-      if (!found) {
-        resSheet.getRange(1, col).setValue(name);
-        report.addedColumns.push({ col: col, name: name });
-      }
-    }
+
+  if (lastRow <= 1 && lastCol === 0) {
+    // 완전히 빈 시트 — 표준 헤더 일괄 작성
+    resSheet.getRange(1, 1, 1, STANDARD_HEADER.length).setValues([STANDARD_HEADER]);
+    resSheet.setFrozenRows(1);
+    report.createdHeader = true;
+  } else if (lastRow <= 1) {
+    // 헤더만 있는 빈 시트 — 헤더 교체
+    if (lastCol > 0) resSheet.getRange(1, 1, 1, lastCol).clearContent();
+    resSheet.getRange(1, 1, 1, STANDARD_HEADER.length).setValues([STANDARD_HEADER]);
+    resSheet.setFrozenRows(1);
+    report.createdHeader = true;
   } else {
-    // 예약내역 시트가 비어있는 환경 — 헤더 27개도 함께 작성
-    var fullHeader = [
-      '예약번호','신청일시','예약날짜','시작시간','종료시간','이용시간','Room타입',
-      '업체명','인스타그램ID','이름','연락처','전체인원','차량대수','세금계산서',
-      '유입경로','촬영내용','기본요금','추가인원요금','소계','VAT','총금액',
-      '입금확인','입금확인일시','사업자등록증','Calendar이벤트ID','알림톡발송상태','비고',
-      '옵션상품','옵션금액','주문번호','결제ID','결제수단','결제상태','결제완료일시','환불금액','환불일시'
-    ];
-    resSheet.getRange(1, 1, 1, fullHeader.length).setValues([fullHeader]);
-    report.addedColumns.push({ note: '예약내역 헤더 36개 일괄 생성' });
+    // 기존 데이터가 있는 시트 — 헤더 일치 여부 확인
+    var header = resSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var headerMatches = true;
+    for (var i = 0; i < STANDARD_HEADER.length; i++) {
+      if (header[i] !== STANDARD_HEADER[i]) { headerMatches = false; break; }
+    }
+    if (!headerMatches) {
+      throw new Error(
+        '예약내역 시트에 기존 데이터(' + (lastRow - 1) + '행)가 있는데 헤더가 신규 32컬럼 양식과 다릅니다. ' +
+        '백업 후 시트를 비우고 다시 실행하거나, 운영 환경 마이그레이션 절차(가이드 5절)를 따르세요.'
+      );
+    }
+    // 헤더는 일치하지만 일부 컬럼이 누락된 경우만 보강
+    if (lastCol < STANDARD_HEADER.length) {
+      for (var c = lastCol; c < STANDARD_HEADER.length; c++) {
+        resSheet.getRange(1, c + 1).setValue(STANDARD_HEADER[c]);
+      }
+      report.createdHeader = true;
+    }
   }
 
-  // 2. 신규 시트 3개
+  // 2. 신규 시트 3종 (Phase 1 결제 모듈용)
   _ensureSheet(ss, '옵션상품',
-    ['상품ID','카테고리','상품명','설명','가격','단위','최대수량','활성화','표시순서'],
+    ['상품ID', '카테고리', '상품명', '설명', '가격', '단위', '최대수량', '활성화', '표시순서'],
     report);
   _ensureSheet(ss, '임시주문',
-    ['주문번호','생성일시','만료일시','예약날짜','시작시간','종료시간','Room타입','예약데이터','금액','상태'],
+    ['주문번호', '생성일시', '만료일시', '예약날짜', '시작시간', '종료시간', '예약데이터', '금액', '상태'],
     report);
   _ensureSheet(ss, '결제로그',
-    ['로그ID','일시','주문번호','이벤트유형','결제ID','금액','응답코드','응답메시지','상세'],
+    ['로그ID', '일시', '주문번호', '이벤트유형', '결제ID', '금액', '응답코드', '응답메시지', '상세'],
     report);
 
-  // 3. 설정 시트 항목 추가
+  // 3. 설정 시트 결제 운영 키
   var settingSheet = ss.getSheetByName('설정') || getSheet('설정');
   var setData = settingSheet.getDataRange().getValues();
   var existingKeys = [];
@@ -198,10 +222,7 @@ function initializePaymentSchema() {
   var defaults = [
     ['임시점유시간', 10, '분', '결제 진행 중 시간대 점유 기간'],
     ['결제재시도횟수', 3, '회', 'PG API 호출 실패 시'],
-    ['결제재시도간격', 5, '초', '재시도 사이 대기'],
-    ['환불정책_24시간이상', 100, '%', '24시간 이전 취소 시 환불율'],
-    ['환불정책_12시간이상', 50, '%', '12-24시간 사이'],
-    ['환불정책_12시간미만', 0, '%', '12시간 미만']
+    ['결제재시도간격', 5, '초', '재시도 사이 대기']
   ];
   defaults.forEach(function (row) {
     if (existingKeys.indexOf(row[0]) === -1) {

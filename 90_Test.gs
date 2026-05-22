@@ -39,14 +39,22 @@ function _verifyPhase0() {
     check('sheet.load', false, e.message);
   }
 
-  // 3. 예약내역 컬럼 36개 + AB~AJ 헤더
+  // 3. 예약내역 컬럼 32개 (260522 약관 신규 양식)
   try {
     var resSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('예약내역');
     var header = resSheet.getRange(1, 1, 1, resSheet.getLastColumn()).getValues()[0];
-    check('cols.length>=36', header.length >= 36, { length: header.length });
-    check('cols.V=입금확인', header.length >= 22 && header[21] === '입금확인', { v: header[21] });
-    ['옵션상품', '옵션금액', '주문번호', '결제ID', '결제수단', '결제상태', '결제완료일시', '환불금액', '환불일시'].forEach(function (name) {
-      check('col:' + name, header.indexOf(name) >= 0);
+    check('cols.length=32', header.length === 32, { length: header.length });
+    var expected = [
+      '예약번호', '신청일시', '예약날짜', '시작시간', '종료시간', '이용시간',
+      '이름', '연락처', '이메일', '전체인원', '세금계산서',
+      '기본요금', '시간추가요금', '인원추가요금', '소계', 'VAT', '보증금', '총금액',
+      '입금확인', '입금확인일시', '사업자등록증',
+      'Calendar이벤트ID', '알림톡발송상태',
+      '옵션상품', '옵션금액', '주문번호', '결제ID', '결제수단', '결제상태',
+      '결제완료일시', '환불금액', '환불일시'
+    ];
+    expected.forEach(function (name, idx) {
+      check('col[' + idx + ']:' + name, header[idx] === name, { got: header[idx] });
     });
   } catch (e) {
     check('cols.read', false, e.message);
@@ -69,11 +77,11 @@ function _verifyPhase0() {
     }
   });
 
-  // 5. getReservedSlotsByDate 정상 객체 반환
+  // 5. getReservedSlotsByDate 정상 객체 반환 (260522 약관: 단일 공간, slots 배열)
   try {
     var slots = getReservedSlotsByDate('2026-05-20');
     check('getReservedSlotsByDate.shape',
-      slots && typeof slots === 'object' && slots.hasOwnProperty('A') && slots.hasOwnProperty('A+B'),
+      slots && typeof slots === 'object' && Array.isArray(slots.slots),
       slots);
   } catch (e) {
     check('getReservedSlotsByDate', false, e.message);
@@ -87,35 +95,49 @@ function _verifyPhase0() {
     check('getSettings', false, e.message);
   }
 
-  // 7. 가격 회귀 (옵션 0개) — 명세서 인수 기준 "가격 계산 결과 변동 없음"
+  // 7. 가격 회귀 — 260522 약관 기준
+  // 시나리오 A: 평일(월요일) 5명 × 3시간
+  //   packageRate=300,000 / extraHoursFee=0 / extraPersonFee=(5-4)*10,000=10,000
+  //   subtotal=310,000 / vat=Math.round(310,000*10/110)=28,182 / deposit=100,000 / total=410,000
   try {
-    var priceResp = calculatePrice(5, 3, 'A');
-    // 기존 공식: basePrice=44000*1*3=132000, extraPersons=2, extraFee=2*5000*3=30000
-    //          subtotal=162000, vat=Math.round(162000*0.1)=16200, total=178200
-    var expectedBase = 132000;
-    var expectedExtra = 30000;
-    var expectedSubtotal = 162000;
-    var expectedTotal = 178200;
-    check('price.basePrice', priceResp.basePrice === expectedBase, { got: priceResp.basePrice, expected: expectedBase });
-    check('price.extraPersonFee', priceResp.extraPersonFee === expectedExtra, { got: priceResp.extraPersonFee, expected: expectedExtra });
-    check('price.subtotal', priceResp.subtotal === expectedSubtotal, { got: priceResp.subtotal, expected: expectedSubtotal });
-    check('price.total', priceResp.total === expectedTotal, { got: priceResp.total, expected: expectedTotal });
-    check('price.success', priceResp.success === true);
+    var mondayDate = _findUpcomingWeekday(1); // 다음 월요일
+    var priceWeekday = calculatePrice(5, 3, null, mondayDate);
+    check('price.weekday.basePrice', priceWeekday.basePrice === 300000,
+          { got: priceWeekday.basePrice, expected: 300000 });
+    check('price.weekday.extraPersonOnlyFee', priceWeekday.extraPersonOnlyFee === 10000,
+          { got: priceWeekday.extraPersonOnlyFee, expected: 10000 });
+    check('price.weekday.subtotal', priceWeekday.subtotal === 310000,
+          { got: priceWeekday.subtotal, expected: 310000 });
+    check('price.weekday.deposit', priceWeekday.deposit === 100000,
+          { got: priceWeekday.deposit, expected: 100000 });
+    check('price.weekday.total', priceWeekday.total === 410000,
+          { got: priceWeekday.total, expected: 410000 });
+    check('price.weekday.isWeekend', priceWeekday.isWeekend === false);
+    check('price.success', priceWeekday.success === true);
   } catch (e) {
-    check('price.regression', false, e.message);
+    check('price.weekday.regression', false, e.message);
   }
 
-  // 8. suggestRoomType 문자열 호환
+  // 시나리오 B: 주말(토요일) 4명 × 4시간
+  //   packageRate=400,000 / extraHoursFee=50,000 / extraPersonFee=0
+  //   subtotal=450,000 / deposit=100,000 / total=550,000
   try {
-    check('suggestRoomType(12)=A+B', suggestRoomType(12) === 'A+B');
-    check('suggestRoomType(3)=A', suggestRoomType(3) === 'A');
+    var saturdayDate = _findUpcomingWeekday(6); // 다음 토요일
+    var priceWeekend = calculatePrice(4, 4, null, saturdayDate);
+    check('price.weekend.basePrice', priceWeekend.basePrice === 400000,
+          { got: priceWeekend.basePrice, expected: 400000 });
+    check('price.weekend.extraHoursFee', priceWeekend.extraHoursFee === 50000,
+          { got: priceWeekend.extraHoursFee, expected: 50000 });
+    check('price.weekend.total', priceWeekend.total === 550000,
+          { got: priceWeekend.total, expected: 550000 });
+    check('price.weekend.isWeekend', priceWeekend.isWeekend === true);
   } catch (e) {
-    check('suggestRoomType', false, e.message);
+    check('price.weekend.regression', false, e.message);
   }
 
-  // 9. checkAvailability 응답 형태
+  // 8. checkAvailability 응답 형태 (단일 공간, roomType 인자 무시)
   try {
-    var avail = checkAvailability('2026-05-20', '10:00', '13:00', 'A');
+    var avail = checkAvailability('2026-05-20', '10:00', '13:00');
     check('checkAvailability.available.type', typeof avail.available === 'boolean', avail);
     check('checkAvailability.success', avail.success === true);
   } catch (e) {
@@ -169,6 +191,44 @@ function _verifyPhase0() {
     });
   }
   return summary;
+}
+
+/**
+ * 오늘 기준 가장 가까운 미래의 특정 요일을 YYYY-MM-DD로 반환합니다.
+ * @param {number} targetDay - 0=일, 1=월, ..., 6=토
+ * @return {string}
+ * @private
+ */
+function _findUpcomingWeekday(targetDay) {
+  var d = new Date();
+  var diff = (targetDay - d.getDay() + 7) % 7;
+  if (diff === 0) diff = 7; // 오늘과 같은 요일이면 다음 주
+  d.setDate(d.getDate() + diff);
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+/**
+ * 환불 정책(260522 일 단위) 단독 검증.
+ */
+function _verifyRefundPolicy_260522() {
+  var results = [];
+  var amount = 300000;
+
+  function _test(name, daysBefore, expectedRate) {
+    var d = new Date();
+    var reservation = new Date(d);
+    reservation.setDate(d.getDate() + daysBefore);
+    var resStr = Utilities.formatDate(reservation, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    var r = calculateRefundAmount({ amount: amount, reservationDate: resStr }, d);
+    var ok = r.refundRate === expectedRate;
+    results.push({ check: name, ok: ok, got: r, expected: expectedRate });
+  }
+  _test('refund.10일전=100%', 10, 100);
+  _test('refund.6일전=50%', 6, 50);
+  _test('refund.4일전=30%', 4, 30);
+  _test('refund.1일전=0%', 1, 0);
+  console.log(JSON.stringify(results, null, 2));
+  return results;
 }
 
 /**

@@ -94,20 +94,111 @@ function getSettings() {
     return ok(settings, settings);
   } catch (error) {
     logError('getSettings', error);
-    // 기존 폴백 유지 (settings 자체는 root에 spread, 호환)
+    // 260522 약관 기준 폴백 (단일 공간, 3시간 패키지 모델)
     var fallback = {
-      기준인원: 3,
-      시간당기본요금: 44000,
-      최소이용시간: 2,
-      추가인원단가: 5000,
-      AB동시대관기준: 10,
+      기준인원: 4,
+      최대인원: 8,
+      최소이용시간: 3,
+      기본요금_평일_3시간: 300000,
+      기본요금_주말_3시간: 400000,
+      시간추가요금: 50000,
+      인원추가요금: 10000,
+      보증금: 100000,
       VAT요율: 10,
-      운영시작시간: '09:00',
-      운영종료시간: '22:00',
-      예약시간단위: 30
+      VAT포함여부: 'Y',
+      운영시작시간: '00:00',
+      운영종료시간: '24:00',
+      예약시간단위: 30,
+      환불정책_8일이상: 100,
+      환불정책_5_7일: 50,
+      환불정책_3_4일: 30,
+      환불정책_2일이내: 0
     };
     return ok(fallback, fallback);
   }
+}
+
+/**
+ * 260522 약관 기준으로 설정 시트를 마이그레이션합니다.
+ * Apps Script 에디터에서 1회 수동 실행하십시오.
+ * idempotent — 이미 적용된 항목은 건너뛰며, 기존 값을 덮어쓰지 않습니다.
+ *
+ * 변경 요약:
+ *  - 기존 키 값 수정: 기준인원 3→4, 최소이용시간 2→3, 추가인원단가 5000→10000 (인원추가요금으로 이름 변경)
+ *  - 신규 키 추가: 최대인원, 기본요금_평일_3시간, 기본요금_주말_3시간, 시간추가요금,
+ *                  인원추가요금, 보증금, VAT포함여부, 환불정책_8일이상 등
+ *  - 기존 호환을 위해 시간 기반 환불정책 키(_24시간이상 등)는 그대로 둡니다.
+ *  - "시간당기본요금" 키는 더 이상 사용하지 않으나 삭제하지는 않습니다(다른 외부 참조 가능성).
+ *
+ * @return {{updated:Array, added:Array, skipped:Array}}
+ */
+function migrateSettings_260522() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('설정') || getSheet('설정');
+  var data = sheet.getDataRange().getValues();
+
+  // 키-행번호 인덱스
+  var keyToRow = {};
+  for (var i = 1; i < data.length; i++) {
+    var k = data[i][0];
+    if (k) keyToRow[String(k)] = i + 1; // 1-based row
+  }
+
+  var updated = [];
+  var added = [];
+  var skipped = [];
+
+  // 1) 기존 키 값 갱신 (값이 다를 때만)
+  var valueUpdates = [
+    { key: '기준인원', value: 4 },
+    { key: '최소이용시간', value: 3 }
+  ];
+  valueUpdates.forEach(function (u) {
+    var row = keyToRow[u.key];
+    if (!row) return; // 키가 없으면 아래 신규 추가 단계에서 처리
+    var current = data[row - 1][1];
+    if (current === u.value) {
+      skipped.push(u.key + '(이미 ' + u.value + ')');
+    } else {
+      sheet.getRange(row, 2).setValue(u.value);
+      updated.push(u.key + ': ' + current + ' → ' + u.value);
+    }
+  });
+
+  // 2) 신규 키 일괄 추가 (이미 있으면 건너뜀)
+  var newRows = [
+    ['기준인원', 4, '명', '기본 이용 인원 (4명 초과 시 인원 추가 요금 발생)'],
+    ['최대인원', 8, '명', '입실 가능 최대 인원 (초과 시 즉시 퇴실 조치)'],
+    ['최소이용시간', 3, '시간', '최소 대여 시간 (3시간 패키지 기본)'],
+    ['기본요금_평일_3시간', 300000, '원', '평일 월~금, 3시간 기준 (VAT 포함)'],
+    ['기본요금_주말_3시간', 400000, '원', '주말 및 공휴일, 3시간 기준 (VAT 포함)'],
+    ['시간추가요금', 50000, '원/시간', '3시간 초과 1시간당 추가 (VAT 포함)'],
+    ['인원추가요금', 10000, '원/인', '기준 인원 초과 1인당 (총 이용시간 1회 부과, VAT 포함)'],
+    ['보증금', 100000, '원', '예약금과 함께 수령, 퇴실 점검 후 환불'],
+    ['VAT포함여부', 'Y', '', '가격 표시가 VAT 포함이면 Y'],
+    ['환불정책_8일이상', 100, '%', '이용일 8일 전까지 취소 시 환불율'],
+    ['환불정책_5_7일', 50, '%', '이용일 7~5일 전 취소 시'],
+    ['환불정책_3_4일', 30, '%', '이용일 4~3일 전 취소 시'],
+    ['환불정책_2일이내', 0, '%', '이용일 2일 전 ~ 당일 취소 시 (위약금 100%)']
+  ];
+  newRows.forEach(function (row) {
+    if (keyToRow.hasOwnProperty(row[0])) {
+      // 기준인원/최소이용시간은 위에서 이미 처리했으므로 중복 추가 방지
+      if (row[0] !== '기준인원' && row[0] !== '최소이용시간') {
+        skipped.push(row[0] + '(이미 존재)');
+      }
+      return;
+    }
+    sheet.appendRow(row);
+    added.push(row[0]);
+  });
+
+  log(LOG_LEVEL.INFO, 'settings.migrated.260522', {
+    updated: updated, added: added, skipped: skipped
+  });
+
+  // 캐시 무효화는 Settings용으로 별도 캐시가 없으나 명시
+  return { updated: updated, added: added, skipped: skipped };
 }
 
 /**
@@ -122,37 +213,16 @@ function _getSettingsRaw() {
 }
 
 // ==========================================
-// Room 정보 (클라이언트 호출)
+// (Deprecated) getRoomInfo
 // ==========================================
 
 /**
- * 활성화된 Room 목록 반환. 클라이언트 호출.
- * 명세서 6-1 표준 포맷 예외 — 기존 클라이언트(index.html L772 rooms.forEach)가
- * 배열을 그대로 사용하므로 의도적으로 배열을 반환한다.
- *
- * @return {Array<{type, capacity, rate, description, active}>}
+ * @deprecated 260522 약관 기준 단일 공간 운영으로 Room 시스템이 제거되었습니다.
+ *             호환을 위해 빈 배열을 반환합니다. 신규 클라이언트는 이 함수를 호출하지 마십시오.
+ * @return {Array}
  */
 function getRoomInfo() {
-  try {
-    var sheet = getSheet('Room정보');
-    var data = sheet.getDataRange().getValues();
-    var rooms = [];
-    for (var i = 1; i < data.length; i++) {
-      if (data[i][4] === 'Y') {
-        rooms.push({
-          type: data[i][0],
-          capacity: data[i][1],
-          rate: data[i][2],
-          description: data[i][3],
-          active: true
-        });
-      }
-    }
-    return rooms;
-  } catch (error) {
-    logError('getRoomInfo', error);
-    return [];
-  }
+  return [];
 }
 
 // ==========================================

@@ -505,28 +505,15 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>스튜디오 예약 시스템</h1>
-      <p>원하시는 날짜와 시간을 선택하여 예약해주세요</p>
+      <h1>이오 아크로 _성수 예약</h1>
+      <p>원하시는 날짜와 시간을 선택해 예약해 주세요 (최소 3시간, 연중무휴 24시간 운영)</p>
     </div>
 
     <div class="form-container">
       <div id="alertBox" class="alert"></div>
 
       <form id="reservationForm">
-        <!-- 1. 업체 정보 -->
-        <div class="section">
-          <div class="section-title">업체 정보</div>
-          <div class="form-group">
-            <label class="required">업체 및 브랜드명</label>
-            <input type="text" id="companyName" name="companyName" required placeholder="예: ABC Studio">
-          </div>
-          <div class="form-group">
-            <label>인스타그램 ID</label>
-            <input type="text" id="instagram" name="instagram" placeholder="예: @abc_studio (선택사항)">
-          </div>
-        </div>
-
-        <!-- 2. 예약자 정보 -->
+        <!-- 1. 예약자 정보 -->
         <div class="section">
           <div class="section-title">예약자 정보</div>
           <div class="form-row">
@@ -539,25 +526,14 @@
               <input type="tel" id="phone" name="phone" required placeholder="010-0000-0000">
             </div>
           </div>
-        </div>
-
-        <!-- 3. 방문 정보 -->
-        <div class="section">
-          <div class="section-title">방문 정보</div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="required">전체 인원</label>
-              <input type="number" id="persons" name="persons" required min="1" value="3">
-              <div class="help-text">촬영에 참여하는 모든 인원</div>
-            </div>
-            <div class="form-group">
-              <label class="required">방문 차량 대수</label>
-              <input type="number" id="cars" name="cars" required min="0" value="1">
-            </div>
+          <div class="form-group">
+            <label class="required">이메일</label>
+            <input type="email" id="email" name="email" required placeholder="example@email.com">
+            <div class="help-text">예약 확정 및 안내 메일을 받을 주소입니다.</div>
           </div>
         </div>
 
-        <!-- 4. 날짜/시간 선택 -->
+        <!-- 2. 날짜 및 시간 -->
         <div class="section">
           <div class="section-title">날짜 및 시간</div>
           <div class="form-group">
@@ -576,32 +552,31 @@
               <select id="endTime" name="endTime" required>
                 <option value="">선택하세요</option>
               </select>
+              <div class="help-text">시작 시간 기준 최소 3시간 이후로 선택해주세요.</div>
             </div>
           </div>
           <div class="form-group">
             <label>이용 시간</label>
             <input type="text" id="duration" readonly style="background: #FAFAFC; color: #86868B; cursor: not-allowed;"
-              placeholder="시간을 선택하면 자동 계산됩니다">
+              placeholder="시간을 선택하면 자동 계산됩니다 (최소 3시간)">
           </div>
         </div>
 
-        <!-- 5. Room 선택 -->
+        <!-- 3. 인원 -->
         <div class="section">
-          <div class="section-title">Room 선택</div>
+          <div class="section-title">이용 인원</div>
           <div class="form-group">
-            <label class="required">Room 타입</label>
-            <select id="roomType" name="roomType" required>
-              <option value="">선택하세요</option>
-            </select>
-            <div id="roomSuggestion" class="room-suggestion" style="display: none;"></div>
+            <label class="required">전체 인원</label>
+            <input type="number" id="persons" name="persons" required min="1" max="8" value="4">
+            <div class="help-text">기본 4명 / 최대 8명 (초과 시 예약 불가, 기준 초과 1인당 10,000원 추가)</div>
           </div>
         </div>
 
-        <!-- 6. 옵션 선택 -->
+        <!-- 4. 세금계산서 -->
         <div class="section">
-          <div class="section-title">옵션 선택</div>
+          <div class="section-title">세금계산서</div>
           <div class="form-group">
-            <label class="required">세금계산서 발행</label>
+            <label class="required">세금계산서 발행 여부</label>
             <div class="radio-group">
               <label>
                 <input type="radio" name="taxBill" value="Y" required>
@@ -612,35 +587,11 @@
                 발행 불필요
               </label>
             </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="required">유입 경로</label>
-              <select id="source" name="source" required>
-                <option value="">선택하세요</option>
-                <option value="네이버">네이버</option>
-                <option value="인스타그램">인스타그램</option>
-                <option value="지인소개">지인소개</option>
-                <option value="공간플랫폼">공간플랫폼</option>
-                <option value="기타">기타</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="required">촬영 내용</label>
-              <select id="shootingType" name="shootingType" required>
-                <option value="">선택하세요</option>
-                <option value="의류">의류</option>
-                <option value="광고">광고</option>
-                <option value="드라마">드라마</option>
-                <option value="잡지">잡지</option>
-                <option value="스냅">스냅</option>
-                <option value="기타">기타</option>
-              </select>
-            </div>
+            <div class="help-text">현금영수증·세금계산서 모두 추가 요금 없이 동일 금액으로 발행됩니다.</div>
           </div>
         </div>
 
-        <!-- 7. 파일 업로드 -->
+        <!-- 5. 파일 업로드 (세금계산서 발행 시 표시) -->
         <div class="section" id="fileUploadSection" style="display: none;">
           <div class="section-title">사업자등록증 업로드</div>
           <div class="form-group">
@@ -660,24 +611,35 @@
           <div class="section-title">예상 금액</div>
           <div class="price-display">
             <div class="price-row">
-              <span>기본 요금</span>
+              <span><span id="basePriceLabel">기본 요금 (3시간)</span></span>
               <span id="basePrice">0원</span>
             </div>
             <div class="price-row">
-              <span>추가 인원 요금</span>
-              <span id="extraPersonFee">0원</span>
+              <span>시간 추가</span>
+              <span id="extraHoursFee">0원</span>
             </div>
             <div class="price-row">
-              <span>소계</span>
+              <span>인원 추가</span>
+              <span id="extraPersonOnlyFee">0원</span>
+            </div>
+            <div class="price-row">
+              <span>소계 (VAT 포함)</span>
               <span id="subtotal">0원</span>
             </div>
             <div class="price-row">
-              <span>부가세 (VAT 10%)</span>
-              <span id="vat">0원</span>
+              <span style="color: #86868B;">└ 부가세 포함분 (VAT 10%)</span>
+              <span id="vat" style="color: #86868B;">0원</span>
+            </div>
+            <div class="price-row">
+              <span>보증금</span>
+              <span id="deposit">0원</span>
             </div>
             <div class="price-row total">
-              <span>총 금액</span>
+              <span>총 결제 금액</span>
               <span id="total">0원</span>
+            </div>
+            <div style="margin-top: 12px; font-size: 12px; color: #86868B; line-height: 1.5;">
+              ※ 모든 가격은 부가세(VAT) 포함입니다. 보증금은 퇴실 점검 후 환불됩니다.
             </div>
           </div>
         </div>
@@ -724,7 +686,6 @@
     // 전역 변수
     // ==========================================
     let settings = {};
-    let rooms = [];
     let termsLoaded = false;  // 약관 로드 여부 (캐싱용)
 
     // ==========================================
@@ -732,7 +693,6 @@
     // ==========================================
     window.onload = function () {
       loadSettings();
-      loadRooms();
       generateTimeOptions();
       setupEventListeners();
       setMinDate();
@@ -754,29 +714,6 @@
         .getSettings();
     }
 
-    function loadRooms() {
-      google.script.run
-        .withSuccessHandler(function (data) {
-          rooms = data;
-          populateRoomOptions();
-          console.log('Room 정보 로드 완료:', rooms);
-        })
-        .withFailureHandler(function (error) {
-          console.error('Room 정보 로드 실패:', error);
-        })
-        .getRoomInfo();
-    }
-
-    function populateRoomOptions() {
-      const select = document.getElementById('roomType');
-      rooms.forEach(function (room) {
-        const option = document.createElement('option');
-        option.value = room.type;
-        option.textContent = 'Room ' + room.type + ' (' + room.description + ')';
-        select.appendChild(option);
-      });
-    }
-
     // ==========================================
     // UI 초기화
     // ==========================================
@@ -784,7 +721,8 @@
       const startSelect = document.getElementById('startTime');
       const endSelect = document.getElementById('endTime');
 
-      for (let hour = 9; hour <= 22; hour++) {
+      // 260522 약관: 연중무휴 24시간 운영
+      for (let hour = 0; hour < 24; hour++) {
         for (let min = 0; min < 60; min += 30) {
           const timeStr = String(hour).padStart(2, '0') + ':' + String(min).padStart(2, '0');
 
@@ -799,6 +737,11 @@
           endSelect.appendChild(endOption);
         }
       }
+      // 종료 24:00 옵션 추가 (자정 마감 표현용)
+      const endMidnight = document.createElement('option');
+      endMidnight.value = '24:00';
+      endMidnight.textContent = '24:00';
+      endSelect.appendChild(endMidnight);
     }
 
     function setMinDate() {
@@ -818,11 +761,8 @@
     // 이벤트 리스너 설정
     // ==========================================
     function setupEventListeners() {
-      // 인원 변경 시
-      document.getElementById('persons').addEventListener('input', function () {
-        suggestRoom();
-        calculatePriceUI();
-      });
+      // 인원 변경 시 가격 재계산
+      document.getElementById('persons').addEventListener('input', calculatePriceUI);
 
       // 시간 변경 시
       document.getElementById('startTime').addEventListener('change', function () {
@@ -835,8 +775,8 @@
         calculatePriceUI();
       });
 
-      // Room 선택 변경 시
-      document.getElementById('roomType').addEventListener('change', calculatePriceUI);
+      // 날짜 변경 시 평일/주말 가격 차이 반영
+      document.getElementById('date').addEventListener('change', calculatePriceUI);
 
       // 세금계산서 선택 시
       document.querySelectorAll('input[name="taxBill"]').forEach(function (radio) {
@@ -883,47 +823,46 @@
     }
 
     // ==========================================
-    // Room 자동 추천
-    // ==========================================
-    function suggestRoom() {
-      const persons = parseInt(document.getElementById('persons').value);
-      if (isNaN(persons) || persons <= 0) return;
-
-      google.script.run
-        .withSuccessHandler(function (suggestedRoom) {
-          const roomSelect = document.getElementById('roomType');
-          const suggestion = document.getElementById('roomSuggestion');
-
-          if (suggestedRoom === 'A+B') {
-            suggestion.textContent = '👥 인원이 많아 A+B 룸 동시 대관을 권장합니다.';
-            suggestion.style.display = 'block';
-            roomSelect.value = 'A+B';
-          } else {
-            suggestion.style.display = 'none';
-          }
-        })
-        .suggestRoomType(persons);
-    }
-
-    // ==========================================
     // 이용 시간 계산
     // ==========================================
+    function getMinHours() {
+      // 설정 시트 기준 최소 이용 시간. 미로딩 시 약관 기본값 3시간.
+      const v = settings && settings['최소이용시간'];
+      const n = Number(v);
+      return (n && n > 0) ? n : 3;
+    }
+
     function calculateDuration() {
       const startTime = document.getElementById('startTime').value;
       const endTime = document.getElementById('endTime').value;
+      const durationInput = document.getElementById('duration');
 
-      if (!startTime || !endTime) return;
+      // 초기화
+      if (!startTime || !endTime) {
+        durationInput.value = '';
+        durationInput.style.color = '#86868B';
+        return;
+      }
 
       const start = timeToMinutes(startTime);
       const end = timeToMinutes(endTime);
 
       if (end <= start) {
-        document.getElementById('duration').value = '종료 시간은 시작 시간보다 늦어야 합니다';
+        durationInput.value = '⚠️ 종료 시간은 시작 시간보다 늦어야 합니다';
+        durationInput.style.color = '#C8332B';
         return;
       }
 
       const hours = (end - start) / 60;
-      document.getElementById('duration').value = hours + '시간';
+      const minHours = getMinHours();
+
+      if (hours < minHours) {
+        durationInput.value = '⚠️ ' + hours + '시간 — 최소 ' + minHours + '시간 이상 예약해야 합니다';
+        durationInput.style.color = '#C8332B';
+      } else {
+        durationInput.value = hours + '시간';
+        durationInput.style.color = '#1D1D1F';
+      }
     }
 
     function timeToMinutes(time) {
@@ -938,9 +877,9 @@
       const persons = parseInt(document.getElementById('persons').value);
       const startTime = document.getElementById('startTime').value;
       const endTime = document.getElementById('endTime').value;
-      const roomType = document.getElementById('roomType').value;
+      const date = document.getElementById('date').value;
 
-      if (!persons || !startTime || !endTime || !roomType) return;
+      if (!persons || !startTime || !endTime) return;
 
       const start = timeToMinutes(startTime);
       const end = timeToMinutes(endTime);
@@ -951,16 +890,24 @@
 
       google.script.run
         .withSuccessHandler(function (price) {
-          document.getElementById('basePrice').textContent = price.basePrice.toLocaleString() + '원';
-          document.getElementById('extraPersonFee').textContent = price.extraPersonFee.toLocaleString() + '원';
-          document.getElementById('subtotal').textContent = price.subtotal.toLocaleString() + '원';
-          document.getElementById('vat').textContent = price.vat.toLocaleString() + '원';
-          document.getElementById('total').textContent = price.total.toLocaleString() + '원';
+          // 평일/주말 라벨
+          const baseLabel = document.getElementById('basePriceLabel');
+          if (baseLabel) {
+            const tag = price.isWeekend ? '주말·공휴일' : '평일';
+            baseLabel.textContent = '기본 요금 (3시간, ' + tag + ')';
+          }
+          document.getElementById('basePrice').textContent = (price.basePrice || 0).toLocaleString() + '원';
+          document.getElementById('extraHoursFee').textContent = (price.extraHoursFee || 0).toLocaleString() + '원';
+          document.getElementById('extraPersonOnlyFee').textContent = (price.extraPersonOnlyFee || 0).toLocaleString() + '원';
+          document.getElementById('subtotal').textContent = (price.subtotal || 0).toLocaleString() + '원';
+          document.getElementById('vat').textContent = (price.vat || 0).toLocaleString() + '원';
+          document.getElementById('deposit').textContent = (price.deposit || 0).toLocaleString() + '원';
+          document.getElementById('total').textContent = (price.total || 0).toLocaleString() + '원';
         })
         .withFailureHandler(function (error) {
           console.error('가격 계산 실패:', error);
         })
-        .calculatePrice(persons, hours, roomType);
+        .calculatePrice(persons, hours, null, date);
     }
 
     // ==========================================
@@ -972,11 +919,9 @@
       // 유효성 검증
       if (!validateForm()) return;
 
-      // 예약 가능 여부 확인
       const date = document.getElementById('date').value;
       const startTime = document.getElementById('startTime').value;
       const endTime = document.getElementById('endTime').value;
-      const roomType = document.getElementById('roomType').value;
 
       showLoading(true);
 
@@ -993,24 +938,19 @@
           showLoading(false);
           showAlert('예약 확인 중 오류가 발생했습니다.', 'error');
         })
-        .checkAvailability(date, startTime, endTime, roomType);
+        .checkAvailability(date, startTime, endTime, null);
     }
 
     function submitReservation() {
       const formData = {
-        companyName: document.getElementById('companyName').value,
-        instagram: document.getElementById('instagram').value,
         name: document.getElementById('name').value,
         phone: document.getElementById('phone').value,
+        email: document.getElementById('email').value,
         persons: document.getElementById('persons').value,
-        cars: document.getElementById('cars').value,
         date: document.getElementById('date').value,
         startTime: document.getElementById('startTime').value,
         endTime: document.getElementById('endTime').value,
-        roomType: document.getElementById('roomType').value,
         taxBill: document.querySelector('input[name="taxBill"]:checked').value,
-        source: document.getElementById('source').value,
-        shootingType: document.getElementById('shootingType').value,
         agreeTerms: document.getElementById('agreeTerms').checked.toString()
       };
 
@@ -1053,7 +993,16 @@
         .withSuccessHandler(function (result) {
           showLoading(false);
           if (result.success) {
-            showAlert('예약이 완료되었습니다!\n예약번호: ' + result.reservationNumber + '\n총 금액: ' + result.totalAmount.toLocaleString() + '원\n\n입금 확인 후 예약이 확정됩니다.', 'success');
+            const depositLine = (result.deposit && result.deposit > 0)
+              ? '\n보증금: ' + result.deposit.toLocaleString() + '원 (퇴실 점검 후 환불)'
+              : '';
+            showAlert(
+              '예약이 완료되었습니다!\n예약번호: ' + result.reservationNumber +
+              '\n총 결제 금액: ' + result.totalAmount.toLocaleString() + '원' +
+              depositLine +
+              '\n\n입금 확인 후 예약이 확정됩니다.',
+              'success'
+            );
             document.getElementById('reservationForm').reset();
             setMinDate();
           } else {
@@ -1070,15 +1019,46 @@
     function validateForm() {
       const phone = document.getElementById('phone').value;
       const phoneRegex = /^010-\d{4}-\d{4}$/;
-
       if (!phoneRegex.test(phone)) {
         showAlert('연락처는 010-0000-0000 형식으로 입력해주세요.', 'error');
         return false;
       }
 
+      const email = document.getElementById('email').value;
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        showAlert('이메일 형식이 올바르지 않습니다.', 'error');
+        return false;
+      }
+
+      // 최소 이용 시간 검증 (260522 약관: 3시간)
+      const startTime = document.getElementById('startTime').value;
+      const endTime = document.getElementById('endTime').value;
+      if (!startTime || !endTime) {
+        showAlert('시작 시간과 종료 시간을 모두 선택해주세요.', 'error');
+        return false;
+      }
+      const startMin = timeToMinutes(startTime);
+      const endMin = timeToMinutes(endTime);
+      if (endMin <= startMin) {
+        showAlert('종료 시간은 시작 시간보다 늦어야 합니다.', 'error');
+        return false;
+      }
+      const hours = (endMin - startMin) / 60;
+      const minHours = getMinHours();
+      if (hours < minHours) {
+        showAlert('최소 이용 시간은 ' + minHours + '시간입니다. 현재 선택은 ' + hours + '시간입니다.', 'error');
+        return false;
+      }
+
+      const persons = parseInt(document.getElementById('persons').value, 10);
+      if (persons > 8) {
+        showAlert('최대 입실 가능 인원은 8명입니다.', 'error');
+        return false;
+      }
+
       const taxBill = document.querySelector('input[name="taxBill"]:checked').value;
       const businessFile = document.getElementById('businessFile').files[0];
-
       if (taxBill === 'Y' && !businessFile) {
         showAlert('세금계산서 발행을 위해 사업자등록증을 첨부해주세요.', 'error');
         return false;

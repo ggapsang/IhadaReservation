@@ -58,10 +58,10 @@ function uploadFile(fileBlob, reservationNumber) {
 // ==========================================
 
 /**
- * Google Calendar에 예약 이벤트 생성.
+ * Google Calendar에 예약 이벤트 생성 (260522 약관: 단일 공간, eoacro 캘린더).
  * Calendar ID는 CALENDAR_ID_CONFIRMED Property 우선, 없으면 기본 Calendar 사용.
  *
- * @param {Object} reservationData
+ * @param {Object} reservationData - 신규 32컬럼 양식 필드 (이름/연락처/이메일/인원/세금계산서/이용시간/총금액/보증금 등)
  * @return {string} eventId
  */
 function createCalendarEvent(reservationData) {
@@ -74,45 +74,31 @@ function createCalendarEvent(reservationData) {
       throw new Error('Calendar를 찾을 수 없습니다. CALENDAR_ID_CONFIRMED 설정을 확인하세요.');
     }
 
-    var startDateTime = new Date(reservationData.date);
-    startDateTime.setHours(reservationData.startTime.getHours());
-    startDateTime.setMinutes(reservationData.startTime.getMinutes());
+    var startDateTime = _composeDateTime(reservationData.date, reservationData.startTime);
+    var endDateTime = _composeDateTime(reservationData.date, reservationData.endTime);
 
-    var endDateTime = new Date(reservationData.date);
-    endDateTime.setHours(reservationData.endTime.getHours());
-    endDateTime.setMinutes(reservationData.endTime.getMinutes());
-
-    var title = '[' + reservationData.roomType + '] ' +
-                reservationData.companyName + ' - ' +
-                reservationData.shootingType;
+    var title = '[예약] ' + reservationData.name + ' (' + reservationData.persons + '명, ' +
+                reservationData.hours + '시간)';
 
     var description =
       '=== 예약 정보 ===\n' +
       '예약번호: ' + reservationData.reservationNumber + '\n' +
-      '업체명: ' + reservationData.companyName + '\n' +
-      (reservationData.instagram ? '인스타그램: ' + reservationData.instagram + '\n' : '') +
+      '이용 시간: ' + reservationData.hours + '시간\n' +
       '\n' +
       '=== 예약자 정보 ===\n' +
       '이름: ' + reservationData.name + '\n' +
       '연락처: ' + reservationData.phone + '\n' +
-      '\n' +
-      '=== 방문 정보 ===\n' +
+      '이메일: ' + (reservationData.email || '') + '\n' +
       '전체 인원: ' + reservationData.persons + '명\n' +
-      '차량 대수: ' + reservationData.cars + '대\n' +
-      '\n' +
-      '=== 촬영 정보 ===\n' +
-      '촬영 내용: ' + reservationData.shootingType + '\n' +
-      '이용 시간: ' + reservationData.hours + '시간\n' +
       '\n' +
       '=== 결제 정보 ===\n' +
-      '총 금액: ' + (reservationData.totalAmount ? reservationData.totalAmount.toLocaleString() : '0') + '원\n' +
-      '세금계산서: ' + (reservationData.taxBill === 'Y' ? '발행' : '미발행') + '\n' +
-      '\n' +
-      '유입 경로: ' + reservationData.source;
+      '총 결제 금액: ' + _won(reservationData.totalAmount) + '원\n' +
+      (reservationData.deposit ? '└ 보증금: ' + _won(reservationData.deposit) + '원\n' : '') +
+      '세금계산서: ' + (reservationData.taxBill === 'Y' ? '발행' : '미발행');
 
     var event = calendar.createEvent(title, startDateTime, endDateTime, {
       description: description,
-      location: '스튜디오 ' + reservationData.roomType
+      location: '이오 아크로 _성수'
     });
     event.addPopupReminder(30);
 
@@ -133,8 +119,8 @@ function createCalendarEvent(reservationData) {
 }
 
 /**
- * V열 체크박스(입금확인) 감지 후 Calendar 동기화.
- * 이미지/버튼에 할당하여 수동 실행하는 함수 (시트 UI 측 기능).
+ * 입금확인(S열) 체크 후 Calendar 동기화. 시트의 UI 측 함수.
+ * 신규 32컬럼 양식 기준 — 입금확인은 S(19번째), 입금확인일시는 T(20번째).
  */
 function syncToCalendar() {
   try {
@@ -144,30 +130,27 @@ function syncToCalendar() {
 
     for (var i = 1; i < data.length; i++) {
       var row = data[i];
-      var isChecked = row[21];     // V열
-      var processedDate = row[22]; // W열
+      var isChecked = row[COL_RES.depositConfirmed];        // S열
+      var processedDate = row[COL_RES.depositConfirmedAt];  // T열
 
-      if (isChecked === true && !processedDate) {
+      if ((isChecked === true || isChecked === 'Y') && !processedDate) {
         var reservationData = {
-          reservationNumber: row[0],
-          date: row[2],
-          startTime: row[3],
-          endTime: row[4],
-          hours: row[5],
-          roomType: row[6],
-          companyName: row[7],
-          instagram: row[8],
-          name: row[9],
-          phone: row[10],
-          persons: row[11],
-          cars: row[12],
-          taxBill: row[13],
-          source: row[14],
-          shootingType: row[15],
-          totalAmount: row[20]
+          reservationNumber: row[COL_RES.reservationNumber],
+          date: row[COL_RES.date],
+          startTime: row[COL_RES.startTime],
+          endTime: row[COL_RES.endTime],
+          hours: row[COL_RES.hours],
+          name: row[COL_RES.name],
+          phone: row[COL_RES.phone],
+          email: row[COL_RES.email],
+          persons: row[COL_RES.persons],
+          taxBill: row[COL_RES.taxBill],
+          totalAmount: row[COL_RES.total],
+          deposit: row[COL_RES.deposit]
         };
         createCalendarEvent(reservationData);
-        sheet.getRange(i + 1, 23).setValue(new Date());  // W열
+        // T열에 처리 일시 기록 (1-base 컬럼 = 20)
+        sheet.getRange(i + 1, COL_RES.depositConfirmedAt + 1).setValue(new Date());
         processedCount++;
       }
     }
@@ -176,6 +159,28 @@ function syncToCalendar() {
     logError('syncToCalendar', error);
     SpreadsheetApp.getUi().alert('오류 발생\n\n' + error.message);
   }
+}
+
+/**
+ * 시트 셀에서 읽은 날짜/시간 값을 안전하게 Date로 조립.
+ * @private
+ */
+function _composeDateTime(dateVal, timeVal) {
+  var dateStr = (dateVal instanceof Date) ? formatDate(dateVal) : String(dateVal);
+  var timeStr;
+  if (timeVal instanceof Date) {
+    timeStr = ('0' + timeVal.getHours()).slice(-2) + ':' + ('0' + timeVal.getMinutes()).slice(-2);
+  } else {
+    timeStr = String(timeVal);
+  }
+  return new Date(dateStr + ' ' + timeStr);
+}
+
+/**
+ * @private
+ */
+function _won(n) {
+  return n ? Number(n).toLocaleString() : '0';
 }
 
 // ==========================================

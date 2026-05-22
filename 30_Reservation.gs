@@ -1,15 +1,22 @@
 /**
  * 30_Reservation.gs - 예약 등록/검증/번호 발급
  *
- * 명세서 Task 0-6 (에러 포맷)에 맞게 응답 표준화.
- * 기존 클라이언트가 root에서 reservationNumber/totalAmount/error를 직접 읽으므로 root shim 적용.
+ * 260522 약관 기준 단일 공간(이오 아크로 _성수) 예약.
+ *
+ * 폼 필수 항목 (약관 + 운영 필수):
+ *   - 이름, 연락처, 이메일, 예약 날짜·시간, 인원, 세금계산서 발행 여부, 약관 동의
+ *   - 세금계산서='Y'인 경우 사업자등록증 파일
+ *
+ * 제거된 항목 (약관에 없는 마케팅·운영 데이터):
+ *   - 업체 및 브랜드명, 인스타그램 ID, 차량 대수, 유입 경로, 촬영 내용, Room 타입
  */
 
 /**
  * 예약 등록 메인 함수. 클라이언트 호출.
  *
- * 응답: { success:true, data:{reservationNumber, totalAmount, message}, reservationNumber, totalAmount, message }
- * 실패: { success:false, errorCode, errorMessage, error }
+ * 응답:
+ *   성공 — { success:true, data:{reservationNumber, totalAmount, deposit, message}, reservationNumber, totalAmount, deposit, message }
+ *   실패 — { success:false, errorCode, errorMessage, error }
  *
  * @param {Object} formData
  * @return {Object}
@@ -29,13 +36,8 @@ function submitReservation(formData) {
       );
     }
 
-    // 2. 예약 가능 여부 재확인
-    var availability = checkAvailability(
-      formData.date,
-      formData.startTime,
-      formData.endTime,
-      formData.roomType
-    );
+    // 2. 예약 가능 여부 재확인 (단일 공간이므로 roomType 인자는 무시됨)
+    var availability = checkAvailability(formData.date, formData.startTime, formData.endTime);
     if (!availability.available) {
       return fail(
         ERROR_CODES.TIME_BLOCKED,
@@ -46,19 +48,25 @@ function submitReservation(formData) {
     // 3. 예약번호 생성
     var reservationNumber = generateReservationNumber();
 
-    // 4. 가격 계산 (옵션 없음 - 기존 동작 유지)
+    // 4. 가격 계산 (260522 약관: 평일/주말 차등 + 보증금 포함)
     var hours = calculateHours(formData.startTime, formData.endTime);
-    var priceResp = calculatePrice(parseInt(formData.persons, 10), hours, formData.roomType);
-    // priceResp는 표준 포맷 + root에 basePrice 등 노출
+    var priceResp = calculatePrice(
+      parseInt(formData.persons, 10),
+      hours,
+      null,           // roomType — 단일 공간이므로 무시
+      formData.date
+    );
     var price = {
-      basePrice: priceResp.basePrice,
-      extraPersonFee: priceResp.extraPersonFee,
-      subtotal: priceResp.subtotal,
-      vat: priceResp.vat,
-      total: priceResp.total
+      basePrice: priceResp.basePrice || 0,
+      extraHoursFee: priceResp.extraHoursFee || 0,
+      extraPersonFee: priceResp.extraPersonOnlyFee || 0,
+      subtotal: priceResp.subtotal || 0,
+      vat: priceResp.vat || 0,
+      deposit: priceResp.deposit || 0,
+      total: priceResp.total || 0
     };
 
-    // 5. 사업자등록증 업로드
+    // 5. 사업자등록증 업로드 (세금계산서='Y'인 경우만)
     var fileUrl = '';
     if (formData.taxBill === 'Y' && formData.businessFileData) {
       var fileBlob = base64ToBlob(
@@ -69,51 +77,51 @@ function submitReservation(formData) {
       fileUrl = uploadFile(fileBlob, reservationNumber);
     }
 
-    // 6. 예약내역 시트에 저장 (기존 27개 컬럼 유지 — AB~AJ는 자동으로 빈 셀)
+    // 6. 예약내역 시트에 저장 — 신규 32컬럼 양식, 결제·옵션 9개는 빈 셀로 자동 채워짐
     var sheet = getSheet('예약내역');
     var now = new Date();
     sheet.appendRow([
-      reservationNumber,            // A
-      now,                          // B
-      formData.date,                // C
-      formData.startTime,           // D
-      formData.endTime,             // E
-      hours,                        // F
-      formData.roomType,            // G
-      formData.companyName,         // H
-      formData.instagram || '',     // I
-      formData.name,                // J
-      formData.phone,               // K
-      formData.persons,             // L
-      formData.cars,                // M
-      formData.taxBill,             // N
-      formData.source,              // O
-      formData.shootingType,        // P
-      price.basePrice,              // Q
-      price.extraPersonFee,         // R
-      price.subtotal,               // S
-      price.vat,                    // T
-      price.total,                  // U
-      'N',                          // V: 입금확인
-      '',                           // W: 입금확인일시
-      fileUrl,                      // X
-      '',                           // Y: Calendar이벤트ID
-      '대기',                       // Z: 알림톡발송상태
-      ''                            // AA: 비고
-      // AB~AJ는 Phase 1의 verifyPayment에서 setValue로 정확한 컬럼에 기록
+      reservationNumber,        // A 예약번호
+      now,                      // B 신청일시
+      formData.date,            // C 예약날짜
+      formData.startTime,       // D 시작시간
+      formData.endTime,         // E 종료시간
+      hours,                    // F 이용시간
+      formData.name,            // G 이름
+      formData.phone,           // H 연락처
+      formData.email,           // I 이메일
+      formData.persons,         // J 전체인원
+      formData.taxBill,         // K 세금계산서
+      price.basePrice,          // L 기본요금
+      price.extraHoursFee,      // M 시간추가요금
+      price.extraPersonFee,     // N 인원추가요금
+      price.subtotal,           // O 소계
+      price.vat,                // P VAT
+      price.deposit,            // Q 보증금
+      price.total,              // R 총금액
+      'N',                      // S 입금확인
+      '',                       // T 입금확인일시
+      fileUrl,                  // U 사업자등록증
+      '',                       // V Calendar이벤트ID
+      '대기'                    // W 알림톡발송상태
+      // X~AF: 옵션·결제 9개 — Phase 1에서 setValue로 기록
     ]);
 
     log(LOG_LEVEL.INFO, 'reservation.submitted', {
       reservationNumber: reservationNumber,
       name: formData.name,
-      date: formData.date,
-      roomType: formData.roomType
+      date: formData.date
     });
 
+    var depositMsg = price.deposit > 0
+      ? '\n(이용대금 ' + (price.total - price.deposit).toLocaleString() + '원 + 보증금 ' +
+        price.deposit.toLocaleString() + '원 포함, 보증금은 퇴실 점검 후 환불됩니다.)'
+      : '';
     var data = {
       reservationNumber: reservationNumber,
       totalAmount: price.total,
-      message: '예약 신청이 완료되었습니다. 입금 확인 후 예약이 확정됩니다.'
+      deposit: price.deposit,
+      message: '예약 신청이 완료되었습니다. 이용대금 + 보증금 입금 확인 후 예약이 확정됩니다.' + depositMsg
     };
     return ok(data, data);
 
@@ -153,7 +161,7 @@ function generateReservationNumber() {
 }
 
 /**
- * 폼 데이터 유효성 검증.
+ * 폼 데이터 유효성 검증 (260522 약관 기준).
  * @param {Object} data
  * @return {{valid:boolean, errors:Array<string>, errorCode?:string}}
  */
@@ -166,23 +174,23 @@ function validateFormData(data) {
   }
 
   // 필수 필드
-  if (!data.companyName) addError('업체명을 입력해주세요.', ERROR_CODES.MISSING_REQUIRED_FIELD);
   if (!data.name) addError('이름을 입력해주세요.', ERROR_CODES.MISSING_REQUIRED_FIELD);
   if (!data.phone) addError('연락처를 입력해주세요.', ERROR_CODES.MISSING_REQUIRED_FIELD);
+  if (!data.email) addError('이메일을 입력해주세요.', ERROR_CODES.MISSING_REQUIRED_FIELD);
   if (!data.date) addError('예약 날짜를 선택해주세요.', ERROR_CODES.MISSING_REQUIRED_FIELD);
   if (!data.startTime) addError('시작 시간을 선택해주세요.', ERROR_CODES.MISSING_REQUIRED_FIELD);
   if (!data.endTime) addError('종료 시간을 선택해주세요.', ERROR_CODES.MISSING_REQUIRED_FIELD);
-  if (!data.roomType) addError('Room을 선택해주세요.', ERROR_CODES.MISSING_REQUIRED_FIELD);
   if (!data.persons) addError('인원을 입력해주세요.', ERROR_CODES.MISSING_REQUIRED_FIELD);
-  if (!data.cars) addError('차량 대수를 입력해주세요.', ERROR_CODES.MISSING_REQUIRED_FIELD);
   if (!data.taxBill) addError('세금계산서 발행 여부를 선택해주세요.', ERROR_CODES.MISSING_REQUIRED_FIELD);
-  if (!data.source) addError('유입 경로를 선택해주세요.', ERROR_CODES.MISSING_REQUIRED_FIELD);
-  if (!data.shootingType) addError('촬영 내용을 선택해주세요.', ERROR_CODES.MISSING_REQUIRED_FIELD);
   if (!data.agreeTerms || data.agreeTerms !== 'true') addError('약관에 동의해주세요.', ERROR_CODES.MISSING_REQUIRED_FIELD);
 
   // 형식 검증
   if (data.phone && !/^010-\d{4}-\d{4}$/.test(data.phone)) {
     addError('연락처는 010-0000-0000 형식으로 입력해주세요.', ERROR_CODES.INVALID_INPUT);
+  }
+
+  if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+    addError('이메일 형식이 올바르지 않습니다.', ERROR_CODES.INVALID_INPUT);
   }
 
   if (data.date) {
@@ -194,6 +202,7 @@ function validateFormData(data) {
     }
   }
 
+  // 시간 + 최소 이용시간
   if (data.startTime && data.endTime) {
     var start = timeToMinutes(data.startTime);
     var end = timeToMinutes(data.endTime);
@@ -202,18 +211,30 @@ function validateFormData(data) {
     } else {
       var hours = (end - start) / 60;
       var settings = _getSettingsRaw();
-      var minHours = settings['최소이용시간'] || 2;
+      var minHours = Number(settings['최소이용시간']) || 3;
       if (hours < minHours) {
         addError('최소 이용 시간은 ' + minHours + '시간입니다.', ERROR_CODES.INVALID_INPUT);
       }
     }
   }
 
+  // 인원 범위 (260522 약관: 기준 4명, 최대 8명)
   if (data.persons) {
     var persons = parseInt(data.persons, 10);
     if (persons <= 0) {
       addError('인원은 1명 이상이어야 합니다.', ERROR_CODES.INVALID_INPUT);
+    } else {
+      var settingsForPersons = _getSettingsRaw();
+      var maxPersons = Number(settingsForPersons['최대인원']) || 0;
+      if (maxPersons > 0 && persons > maxPersons) {
+        addError('최대 입실 가능 인원은 ' + maxPersons + '명입니다.', ERROR_CODES.INVALID_INPUT);
+      }
     }
+  }
+
+  // 세금계산서='Y'인 경우 사업자등록증 필수
+  if (data.taxBill === 'Y' && !data.businessFileData) {
+    addError('세금계산서 발행을 위해 사업자등록증을 첨부해주세요.', ERROR_CODES.MISSING_REQUIRED_FIELD);
   }
 
   return {
