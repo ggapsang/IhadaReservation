@@ -36,7 +36,8 @@ var COL_RES = {
 
 /**
  * 예약 가능 여부 확인. 클라이언트 호출.
- * 차단 대상: 예약내역에 입금확인 Y/true가 기록된 행과 시간이 겹치는 경우.
+ * 차단 대상: 예약내역에 신청된 모든 예약(입금확인 여부 무관)과 시간이 겹치는 경우.
+ * 입금 확인 전 신청도 시간대를 점유합니다.
  *
  * @param {string} date YYYY-MM-DD
  * @param {string} startTime HH:MM
@@ -58,10 +59,6 @@ function checkAvailability(date, startTime, endTime, roomType) {
       var row = resData[i];
       if (!row[COL_RES.reservationNumber]) continue;
       if (formatDate(row[COL_RES.date]) !== date) continue;
-
-      var deposit = row[COL_RES.depositConfirmed];
-      var isDeposited = (deposit === 'Y' || deposit === true);
-      if (!isDeposited) continue;
 
       var resStart = new Date(formatDate(row[COL_RES.date]) + ' ' + row[COL_RES.startTime]);
       var resEnd = new Date(formatDate(row[COL_RES.date]) + ' ' + row[COL_RES.endTime]);
@@ -102,6 +99,7 @@ function checkAvailability(date, startTime, endTime, roomType) {
 
 /**
  * 특정 날짜의 점유 시간대 조회. UI 그리드용.
+ * 입금 확인 여부 무관, 모든 신청된 예약을 점유로 반환합니다.
  * @param {string} date YYYY-MM-DD
  * @return {{slots:Array<{start, end, status}>}}
  */
@@ -117,11 +115,11 @@ function getReservedSlotsByDate(date) {
       if (!row[COL_RES.reservationNumber]) continue;
       if (formatDate(row[COL_RES.date]) !== date) continue;
       var deposit = row[COL_RES.depositConfirmed];
-      if (deposit !== 'Y' && deposit !== true) continue;
+      var status = (deposit === 'Y' || deposit === true) ? 'PAID' : 'PENDING';
       slots.push({
         start: _toTimeString(row[COL_RES.startTime]),
         end: _toTimeString(row[COL_RES.endTime]),
-        status: 'PAID'
+        status: status
       });
     }
     return { slots: slots };

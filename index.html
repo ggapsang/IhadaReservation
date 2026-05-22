@@ -540,17 +540,21 @@
             <label class="required">예약 날짜</label>
             <input type="date" id="date" name="date" required>
           </div>
+          <div id="reservedSlotsBox" style="display:none; margin-bottom:16px; padding:14px 16px; border-radius:8px; background:#F2F2F7; font-size:13px; line-height:1.6; color:#1D1D1F;">
+            <div style="font-weight:600; margin-bottom:6px;">📅 선택일 예약 현황</div>
+            <div id="reservedSlotsList"></div>
+          </div>
           <div class="form-row">
             <div class="form-group">
               <label class="required">시작 시간</label>
-              <select id="startTime" name="startTime" required>
-                <option value="">선택하세요</option>
+              <select id="startTime" name="startTime" required disabled>
+                <option value="">날짜를 먼저 선택</option>
               </select>
             </div>
             <div class="form-group">
               <label class="required">종료 시간</label>
-              <select id="endTime" name="endTime" required>
-                <option value="">선택하세요</option>
+              <select id="endTime" name="endTime" required disabled>
+                <option value="">날짜를 먼저 선택</option>
               </select>
               <div class="help-text">시작 시간 기준 최소 3시간 이후로 선택해주세요.</div>
             </div>
@@ -688,6 +692,9 @@
     // ==========================================
     let settings = {};
     let termsLoaded = false;  // 약관 로드 여부 (캐싱용)
+    let reservedSlots = [];   // 현재 선택된 날짜의 예약된 시간대 [{start, end, status}]
+    let reservedSlotsDate = null;  // 캐시된 슬롯의 날짜
+    let reservedSlotsLoading = false;
 
     // ==========================================
     // 초기화
@@ -772,6 +779,7 @@
 
       // 시간 변경
       document.getElementById('startTime').addEventListener('change', function () {
+        refreshEndTimeOptions();
         calculateDuration();
         calculatePriceUI();
         updateSubmitButtonState();
@@ -783,8 +791,28 @@
         updateSubmitButtonState();
       });
 
-      // 날짜 변경 시 평일/주말 가격 차이 반영
+      // 날짜 변경 시 평일/주말 가격 차이 + 그 날의 예약 슬롯 로드
       document.getElementById('date').addEventListener('change', function () {
+        const d = this.value;
+        const startSel = document.getElementById('startTime');
+        const endSel = document.getElementById('endTime');
+        if (d) {
+          startSel.disabled = false;
+          endSel.disabled = false;
+          if (startSel.options.length > 0) startSel.options[0].textContent = '선택하세요';
+          if (endSel.options.length > 0) endSel.options[0].textContent = '선택하세요';
+          loadReservedSlots(d);
+        } else {
+          reservedSlots = [];
+          reservedSlotsDate = null;
+          renderReservedSlots();
+          startSel.value = '';
+          endSel.value = '';
+          startSel.disabled = true;
+          endSel.disabled = true;
+          if (startSel.options.length > 0) startSel.options[0].textContent = '날짜를 먼저 선택';
+          if (endSel.options.length > 0) endSel.options[0].textContent = '날짜를 먼저 선택';
+        }
         calculatePriceUI();
         updateSubmitButtonState();
       });
@@ -891,6 +919,21 @@
           if (hours < minHours) {
             reasons.push('최소 이용 시간은 ' + minHours + '시간입니다. (현재 ' + hours + '시간)');
           }
+          // 기존 예약과 시간대 겹침 검사
+          if (date && reservedSlotsDate === date && reservedSlots && reservedSlots.length > 0) {
+            const overlaps = reservedSlots.filter(function (s) {
+              const sStart = timeToMinutes(s.start);
+              const sEnd = timeToMinutes(s.end);
+              return start < sEnd && end > sStart;
+            });
+            if (overlaps.length > 0) {
+              const list = overlaps.map(function (s) { return s.start + '~' + s.end; }).join(', ');
+              reasons.push('이미 예약된 시간대와 겹칩니다: ' + list);
+            }
+          }
+          if (date && reservedSlotsLoading) {
+            reasons.push('해당 날짜의 예약 현황을 불러오는 중입니다. 잠시만 기다려주세요.');
+          }
         }
       }
 
@@ -917,6 +960,150 @@
       if (!document.getElementById('agreeTerms').checked) reasons.push('이용 약관에 동의해주세요.');
 
       return reasons;
+    }
+
+    /**
+     * 선택된 날짜의 예약된 시간대를 서버에서 가져와 캐시 + UI 표시.
+     */
+    function loadReservedSlots(date) {
+      reservedSlotsLoading = true;
+      reservedSlotsDate = date;
+      reservedSlots = [];
+      renderReservedSlots('불러오는 중...');
+      updateSubmitButtonState();
+
+      google.script.run
+        .withSuccessHandler(function (result) {
+          reservedSlotsLoading = false;
+          reservedSlots = (result && Array.isArray(result.slots)) ? result.slots : [];
+          renderReservedSlots();
+          refreshStartTimeOptions();
+          refreshEndTimeOptions();
+          updateSubmitButtonState();
+        })
+        .withFailureHandler(function (error) {
+          reservedSlotsLoading = false;
+          reservedSlots = [];
+          console.error('예약 슬롯 로드 실패:', error);
+          renderReservedSlots('예약 현황을 불러오지 못했습니다.');
+          refreshStartTimeOptions();
+          refreshEndTimeOptions();
+          updateSubmitButtonState();
+        })
+        .getReservedSlotsByDate(date);
+    }
+
+    /**
+     * 시작 시간 select 옵션을 동적으로 활성/비활성화.
+     * 활성화 조건: 그 시작 t에서 최소 minHours 이상을 예약 슬롯과 겹치지 않게 잡을 수 있어야 함.
+     * 즉 [t, t+minHours] 구간이 모든 reservedSlot과 겹치지 않고 24:00을 넘지 않아야 함.
+     */
+    function refreshStartTimeOptions() {
+      const startSelect = document.getElementById('startTime');
+      const minHours = getMinHours();
+      const minMin = minHours * 60;
+      const slots = (reservedSlots || []).map(function (s) {
+        return { s: timeToMinutes(s.start), e: timeToMinutes(s.end) };
+      });
+      let disabledCount = 0;
+      for (let i = 0; i < startSelect.options.length; i++) {
+        const opt = startSelect.options[i];
+        if (!opt.value) { opt.disabled = false; opt.textContent = '선택하세요'; continue; }
+        const t = timeToMinutes(opt.value);
+        const tEnd = t + minMin;
+        let blocked = false;
+        if (tEnd > 24 * 60) blocked = true;
+        else {
+          for (let j = 0; j < slots.length; j++) {
+            if (t < slots[j].e && tEnd > slots[j].s) { blocked = true; break; }
+          }
+        }
+        opt.disabled = blocked;
+        opt.textContent = blocked ? (opt.value + ' (예약 불가)') : opt.value;
+        if (blocked) disabledCount++;
+      }
+      // 현재 선택값이 비활성화 상태면 초기화
+      if (startSelect.value) {
+        const cur = startSelect.options[startSelect.selectedIndex];
+        if (cur && cur.disabled) startSelect.value = '';
+      }
+    }
+
+    /**
+     * 종료 시간 select 옵션을 동적으로 활성/비활성화.
+     * 시작 시간이 선택된 경우만 의미 있음. 미선택 시 모두 활성화 상태로 둠.
+     * 활성화 조건: 종료 t_e > 시작 t, t_e - t >= minHours, [t, t_e] 구간이 슬롯과 겹치지 않음.
+     */
+    function refreshEndTimeOptions() {
+      const endSelect = document.getElementById('endTime');
+      const startVal = document.getElementById('startTime').value;
+      const minHours = getMinHours();
+      const minMin = minHours * 60;
+      const slots = (reservedSlots || []).map(function (s) {
+        return { s: timeToMinutes(s.start), e: timeToMinutes(s.end) };
+      });
+
+      if (!startVal) {
+        // 시작 미선택 — 모두 활성화 상태로 둠 (시작 선택 후 다시 갱신됨)
+        for (let i = 0; i < endSelect.options.length; i++) {
+          endSelect.options[i].disabled = false;
+          endSelect.options[i].textContent = endSelect.options[i].value || '선택하세요';
+        }
+        return;
+      }
+      const t = timeToMinutes(startVal);
+      for (let i = 0; i < endSelect.options.length; i++) {
+        const opt = endSelect.options[i];
+        if (!opt.value) { opt.disabled = false; opt.textContent = '선택하세요'; continue; }
+        const tEnd = timeToMinutes(opt.value);
+        let blocked = false;
+        let label = opt.value;
+        if (tEnd <= t) { blocked = true; label += ' (시작 이후만)'; }
+        else if (tEnd - t < minMin) { blocked = true; label += ' (최소 ' + minHours + '시간)'; }
+        else if (tEnd > 24 * 60) { blocked = true; }
+        else {
+          for (let j = 0; j < slots.length; j++) {
+            if (t < slots[j].e && tEnd > slots[j].s) { blocked = true; label = opt.value + ' (예약 불가)'; break; }
+          }
+        }
+        opt.disabled = blocked;
+        opt.textContent = label;
+      }
+      // 현재 종료값이 비활성화 상태면 초기화
+      if (endSelect.value) {
+        const cur = endSelect.options[endSelect.selectedIndex];
+        if (cur && cur.disabled) endSelect.value = '';
+      }
+    }
+
+    /**
+     * 예약된 시간대 박스 갱신.
+     */
+    function renderReservedSlots(loadingText) {
+      const box = document.getElementById('reservedSlotsBox');
+      const list = document.getElementById('reservedSlotsList');
+      if (!reservedSlotsDate) {
+        box.style.display = 'none';
+        list.innerHTML = '';
+        return;
+      }
+      box.style.display = 'block';
+      if (loadingText) {
+        list.innerHTML = '<span style="color:#86868B;">' + loadingText + '</span>';
+        return;
+      }
+      if (reservedSlots.length === 0) {
+        list.innerHTML = '<span style="color:#248A3D;">이 날짜에는 예약된 시간대가 없습니다. 자유롭게 선택해 주세요.</span>';
+        return;
+      }
+      const items = reservedSlots
+        .slice()
+        .sort(function (a, b) { return timeToMinutes(a.start) - timeToMinutes(b.start); })
+        .map(function (s) {
+          return '<li>' + s.start + ' ~ ' + s.end + ' <span style="color:#C8332B; font-weight:600;">예약됨</span></li>';
+        }).join('');
+      list.innerHTML = '<div style="color:#C8332B; margin-bottom:4px;">아래 시간대는 이미 예약되어 선택할 수 없습니다:</div>' +
+                       '<ul style="margin:0; padding-left:20px;">' + items + '</ul>';
     }
 
     /**
