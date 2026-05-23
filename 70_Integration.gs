@@ -119,45 +119,131 @@ function createCalendarEvent(reservationData) {
 }
 
 /**
- * 입금확인(S열) 체크 후 Calendar 동기화. 시트의 UI 측 함수.
- * 신규 32컬럼 양식 기준 — 입금확인은 S(19번째), 입금확인일시는 T(20번째).
+ * 입금확인(S열) Y인데 Calendar이벤트ID(V열)가 비어있는 모든 행을 일괄 동기화합니다.
+ * 시트 메뉴 "예약 관리 > 캘린더 동기화"에서 운영자가 수동 실행하거나, onEdit에서 자동 호출됩니다.
  */
 function syncToCalendar() {
   try {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('예약내역');
-    var data = sheet.getDataRange().getValues();
-    var processedCount = 0;
-
-    for (var i = 1; i < data.length; i++) {
-      var row = data[i];
-      var isChecked = row[COL_RES.depositConfirmed];        // S열
-      var processedDate = row[COL_RES.depositConfirmedAt];  // T열
-
-      if ((isChecked === true || isChecked === 'Y') && !processedDate) {
-        var reservationData = {
-          reservationNumber: row[COL_RES.reservationNumber],
-          date: row[COL_RES.date],
-          startTime: row[COL_RES.startTime],
-          endTime: row[COL_RES.endTime],
-          hours: row[COL_RES.hours],
-          name: row[COL_RES.name],
-          phone: row[COL_RES.phone],
-          email: row[COL_RES.email],
-          persons: row[COL_RES.persons],
-          taxBill: row[COL_RES.taxBill],
-          totalAmount: row[COL_RES.total],
-          deposit: row[COL_RES.deposit]
-        };
-        createCalendarEvent(reservationData);
-        // T열에 처리 일시 기록 (1-base 컬럼 = 20)
-        sheet.getRange(i + 1, COL_RES.depositConfirmedAt + 1).setValue(new Date());
-        processedCount++;
-      }
-    }
-    SpreadsheetApp.getUi().alert('Calendar 동기화 완료\n\n처리된 예약: ' + processedCount + '건');
+    var processed = _syncAllPendingToCalendar();
+    SpreadsheetApp.getUi().alert(
+      'Calendar 동기화 완료\n\n처리된 예약: ' + processed.length + '건' +
+      (processed.length > 0 ? '\n• ' + processed.join('\n• ') : '')
+    );
   } catch (error) {
     logError('syncToCalendar', error);
     SpreadsheetApp.getUi().alert('오류 발생\n\n' + error.message);
+  }
+}
+
+/**
+ * @private
+ * S열=Y AND V열 비어있는 행을 모두 처리. UI 의존성 없음(트리거에서도 호출 가능).
+ * @return {Array<string>} 처리된 예약번호 목록
+ */
+function _syncAllPendingToCalendar() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('예약내역');
+  if (!sheet) return [];
+  var data = sheet.getDataRange().getValues();
+  var processed = [];
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    var isChecked = row[COL_RES.depositConfirmed];
+    var existingEventId = row[COL_RES.calendarEventId];
+    if ((isChecked === true || isChecked === 'Y') && !existingEventId) {
+      var ok = _syncRowToCalendar(sheet, i + 1, row);
+      if (ok) processed.push(row[COL_RES.reservationNumber]);
+    }
+  }
+  return processed;
+}
+
+/**
+ * @private
+ * 단일 행에 대해 Calendar 이벤트 생성 + eventId/처리시각 시트 기록.
+ * @param {Sheet} sheet
+ * @param {number} rowNumber - 1-based
+ * @param {Array} row - 해당 행의 값 배열
+ * @return {boolean} 성공 여부
+ */
+function _syncRowToCalendar(sheet, rowNumber, row) {
+  try {
+    var reservationData = {
+      reservationNumber: row[COL_RES.reservationNumber],
+      date: row[COL_RES.date],
+      startTime: row[COL_RES.startTime],
+      endTime: row[COL_RES.endTime],
+      hours: row[COL_RES.hours],
+      name: row[COL_RES.name],
+      phone: row[COL_RES.phone],
+      email: row[COL_RES.email],
+      persons: row[COL_RES.persons],
+      taxBill: row[COL_RES.taxBill],
+      totalAmount: row[COL_RES.total],
+      deposit: row[COL_RES.deposit]
+    };
+    var eventId = createCalendarEvent(reservationData);
+
+    // V열에 Calendar 이벤트 ID 저장
+    sheet.getRange(rowNumber, COL_RES.calendarEventId + 1).setValue(eventId);
+    // T열에 입금확인 처리 시각 기록 (없을 때만)
+    if (!row[COL_RES.depositConfirmedAt]) {
+      sheet.getRange(rowNumber, COL_RES.depositConfirmedAt + 1).setValue(new Date());
+    }
+    return true;
+  } catch (e) {
+    logError('_syncRowToCalendar', e);
+    return false;
+  }
+}
+
+/**
+ * 시트 S열(입금확인) 편집 자동 트리거.
+ * 운영자가 S열 셀을 Y/체크박스 ON으로 변경하면 즉시 해당 행을 Calendar에 등록합니다.
+ * Apps Script simple trigger — 운영자(스프레드시트 편집 권한자)가 직접 편집할 때 동작.
+ *
+ * 다른 계정이 편집 시에도 동작시키려면 Apps Script 에디터에서 installable trigger를 별도 설정.
+ */
+function onEdit(e) {
+  try {
+    if (!e || !e.range) return;
+    var sheet = e.range.getSheet();
+    if (sheet.getName() !== '예약내역') return;
+    var col = e.range.getColumn();
+    var row = e.range.getRow();
+    // S열 = COL_RES.depositConfirmed + 1 (1-based)
+    if (col !== COL_RES.depositConfirmed + 1) return;
+    if (row < 2) return;
+
+    var v = e.value;
+    var isOn = (v === 'Y' || v === 'TRUE' || v === true);
+    if (!isOn) return;
+
+    // 이미 캘린더 등록된 행은 건너뜀
+    var rowData = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
+    if (rowData[COL_RES.calendarEventId]) return;
+
+    _syncRowToCalendar(sheet, row, rowData);
+  } catch (err) {
+    logError('onEdit', err);
+  }
+}
+
+/**
+ * 스프레드시트 열기 시 커스텀 메뉴 추가.
+ */
+function onOpen() {
+  try {
+    var ui = SpreadsheetApp.getUi();
+    ui.createMenu('예약 관리')
+      .addItem('캘린더 동기화 (일괄)', 'syncToCalendar')
+      .addSeparator()
+      .addItem('초기 세팅 (setupAll)', 'setupAll')
+      .addItem('데이터 보존 마이그레이션 (setupAll_keepData)', 'setupAll_keepData')
+      .addSeparator()
+      .addItem('검증 (_verifyPhase0)', '_verifyPhase0')
+      .addToUi();
+  } catch (e) {
+    // standalone 또는 권한 없을 때 무시
   }
 }
 
